@@ -1,0 +1,60 @@
+1. Startup state after your manual reset
+< STATE DISARMED ZERO
+< ERR DISARMED
+PASS: Startup is disarmed and rejects velocity
+
+2. Continuous invalid commands
+< ACK ARM
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< EVENT TIMEOUT DISARMED
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< ERR VALUE
+< STATE DISARMED ZERO
+PASS: Invalid commands do not prevent timeout
+
+3. Continuous STATUS commands
+< ACK ARM
+< STATE ARMED ZERO
+< STATE ARMED ZERO
+< STATE ARMED ZERO
+< STATE ARMED ZERO
+< STATE ARMED ZERO
+< EVENT TIMEOUT DISARMED
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+< STATE DISARMED ZERO
+PASS: STATUS does not prevent timeout
+
+4. Incomplete command without a newline
+< ACK ARM
+< EVENT TIMEOUT DISARMED
+< ERR DISARMED
+< STATE DISARMED ZERO
+PASS: Incomplete input does not block the watchdog
+
+5. Oversized input and parser recovery
+< ACK ARM
+< EVENT TIMEOUT DISARMED
+< ERR LINE
+< STATE DISARMED ZERO
+PASS: Oversized input is rejected and parsing recovers
+
+ALL FIVE EXTENDED CHECKS PASSED
+< ACK DISARM
