@@ -1,0 +1,118 @@
+# ============================================
+# ROS 2 / Colcon Build Artifacts
+# ============================================
+
+**/ros2_ws/build/
+**/ros2_ws/install/
+**/ros2_ws/log/
+
+# ROS 2 generated cache
+**/.ros/
+
+
+# ============================================
+# Python
+# ============================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+*.egg-info/
+.eggs/
+
+
+# ============================================
+# Virtual Environment
+# ============================================
+
+.venv/
+venv/
+env/
+ENV/
+
+
+# ============================================
+# IDE / Editor
+# ============================================
+
+.vscode/
+.idea/
+
+*.swp
+*.swo
+*~
+
+
+# ============================================
+# OS Generated Files
+# ============================================
+
+.DS_Store
+Thumbs.db
+
+
+# ============================================
+# Logs / Temporary Files
+# ============================================
+
+*.log
+*.tmp
+*.temp
+
+
+# ============================================
+# ROS Bag / Recording Files
+# ============================================
+
+*.bag
+*.db3
+*.mcap
+
+# rosbag2 generated folders
+**/rosbag2_*
+
+
+# ============================================
+# Large Media Files
+# ============================================
+
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+*.jpg
+*.jpeg
+*.png
+
+
+# ============================================
+# Generated Result Files
+# ============================================
+
+# Experimental plots/images
+lv2_module5/results/images/*
+lv2_module5/results/plots/*
+
+# Keep directory structure
+!lv2_module5/results/images/.gitkeep
+!lv2_module5/results/plots/.gitkeep
+
+
+# ============================================
+# Local / Personal Files
+# ============================================
+
+*.local
+*.bak
+*.backup
+
+# Personal notes
+*_private.md
+*_personal.md
