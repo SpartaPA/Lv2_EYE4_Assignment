@@ -19,8 +19,6 @@ SpartaPA/Lv2_EYE4_Assignment/
     │   └── metrics.csv
     └── recordings/README.md
 ```
-<<<<<<< HEAD
-=======
 
 
 ```text
@@ -40,4 +38,3 @@ SpartaPA/Lv2_EYE4_Assignment/
 - [ ]  팀 보고서와 4인 기여, 자료 접근 권한을 확인했습니다.
 - [ ]  팀장이 최종 main에 제출 태그를 만들고 팀 대표로 제출합니다.
 ```
->>>>>>> origin/main
