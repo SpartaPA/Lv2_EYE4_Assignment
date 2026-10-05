@@ -5,9 +5,18 @@
 **/ros2_ws/build/
 **/ros2_ws/install/
 **/ros2_ws/log/
-
-# ROS 2 generated cache
 **/.ros/
+
+
+# ============================================
+# Firmware Build Artifacts
+# ============================================
+
+**/firmware/build/
+*.o
+*.elf
+
+# Firmware .bin files may be committed intentionally.
 
 
 # ============================================
@@ -27,7 +36,7 @@ __pycache__/
 
 
 # ============================================
-# Virtual Environment
+# Virtual Environments
 # ============================================
 
 .venv/
@@ -57,28 +66,32 @@ Thumbs.db
 
 
 # ============================================
-# Logs / Temporary Files
+# Temporary Files
 # ============================================
 
-*.log
 *.tmp
 *.temp
+*.bak
+*.backup
 
 
 # ============================================
-# ROS Bag / Recording Files
+# ROS Bags / Recordings
+# Store separately and document download links
+# in lv2_module5/recordings/README.md.
 # ============================================
 
 *.bag
 *.db3
+*.db3-shm
+*.db3-wal
 *.mcap
 
-# rosbag2 generated folders
-**/rosbag2_*
+**/rosbag2_*/
 
 
 # ============================================
-# Large Media Files
+# Large Video Files
 # ============================================
 
 *.mp4
@@ -87,32 +100,31 @@ Thumbs.db
 *.mkv
 *.webm
 
-*.jpg
-*.jpeg
-*.png
-
 
 # ============================================
-# Generated Result Files
+# Local Secrets / Personal Files
 # ============================================
 
-# Experimental plots/images
-lv2_module5/results/images/*
-lv2_module5/results/plots/*
-
-# Keep directory structure
-!lv2_module5/results/images/.gitkeep
-!lv2_module5/results/plots/.gitkeep
-
-
-# ============================================
-# Local / Personal Files
-# ============================================
+.env
+.env.*
+!.env.example
 
 *.local
-*.bak
-*.backup
-
-# Personal notes
 *_private.md
 *_personal.md
+
+
+# ============================================
+# Assignment Evidence — Keep in Git
+# ============================================
+
+# Do not globally ignore:
+# - *.log
+# - *.csv
+# - *.png, *.jpg, *.jpeg
+# - results/images/
+# - results/plots/
+# - results/logs/
+#
+# Git tracks files, not empty directories.
+# Use .gitkeep where an empty directory is needed.
