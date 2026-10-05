@@ -81,28 +81,11 @@ Thumbs.db
 # Large Media Files
 # ============================================
 
-*.mp4
-*.avi
-*.mov
-*.mkv
-*.webm
-
-*.jpg
-*.jpeg
-*.png
 
 
 # ============================================
 # Generated Result Files
 # ============================================
-
-# Experimental plots/images
-lv2_module5/results/images/*
-lv2_module5/results/plots/*
-
-# Keep directory structure
-!lv2_module5/results/images/.gitkeep
-!lv2_module5/results/plots/.gitkeep
 
 
 # ============================================
