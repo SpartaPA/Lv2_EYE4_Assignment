@@ -1,0 +1,18 @@
+# Raspberry Pi ↔ OpenCR USB 시리얼
+port: "/dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00"
+usb_serial_baudrate: 115200
+
+# OpenCR ↔ DYNAMIXEL 버스
+dynamixel_baudrate: 1000000
+dynamixel_protocol_version: 2.0
+
+# 실제 스캔 및 장착 상태로 확인한 축별 ID
+pan_motor_id: 11
+tilt_motor_id: 12
+
+# 현재 파서 기준 버전의 보드 명령 타임아웃
+command_timeout_sec: 0.3
+
+# 실제 장착 상태에서 검증 후 +1 또는 -1로 설정
+pan_direction: null
+tilt_direction: null

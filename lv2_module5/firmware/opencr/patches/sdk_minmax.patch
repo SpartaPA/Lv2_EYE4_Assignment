@@ -1,0 +1,19 @@
+diff --git a/arduino/opencr_arduino/opencr/libraries/DynamixelSDK/include/dynamixel_sdk/packet_handler.h b/arduino/opencr_arduino/opencr/libraries/DynamixelSDK/include/dynamixel_sdk/packet_handler.h
+index 48d5189..a4f12e7 100644
+--- a/arduino/opencr_arduino/opencr/libraries/DynamixelSDK/include/dynamixel_sdk/packet_handler.h
++++ b/arduino/opencr_arduino/opencr/libraries/DynamixelSDK/include/dynamixel_sdk/packet_handler.h
+@@ -32,6 +32,14 @@
+ #endif
+ 
+ #include <stdio.h>
++// Project compatibility fix: Arduino min/max macros
++#ifdef min
++#undef min
++#endif
++#ifdef max
++#undef max
++#endif
++
+ #include <vector>
+ #include "port_handler.h"
+ 
