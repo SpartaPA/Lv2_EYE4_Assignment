@@ -1,540 +1,494 @@
 # Lv2 Module 5 디렉토리 및 담당 업무 가이드
 
-> 프로젝트: `Lv2_EYE4_Assignment`  
-> 대상: Lv2 Module 5  
-> 목적: 팀원별 작업 영역과 디렉토리 역할을 명확하게 분리하여 통합 과정에서 충돌을 최소화한다.
+> 프로젝트: `Lv2_EYE4_Assignment`
+>
+> 기준: 프로젝트 (1) 비전 객체 추적 시스템 발제문
+>
+> 목적: 팀원별 작업 영역과 디렉토리 역할을 명확히 분리하고, 발제문의 필수 Interface·검증·제출 기준과 실제 저장소 작업 위치를 연결한다.
 
 ---
 
-## 1. 프로젝트 전체 구조
+# 1. 프로젝트 전체 구조
+
+> 아래 트리는 dev/test1 기준 **실제 저장소 구조**다. (분류: runtime / test / commissioning / legacy / evidence)
 
 ```text
 lv2_module5/
+├── README.md                     실행·재현 안내 (Pi 단일 runtime)
+├── report.md / team.md / presentation.md
+├── directory_workflow_guide.md   (이 문서)
+├── 팀업무_네비게이터.md
 │
-├── README.md
-├── report.md
-├── team.md
-├── presentation.md
+├── ros2_ws/src/
+│   ├── realsense_tracker/                     ament_python 패키지
+│   │   ├── package.xml / setup.py / setup.cfg / resource/
+│   │   ├── realsense_tracker/
+│   │   │   ├── detector.py          runtime  HSV·Contour 알고리즘 (노드·tools 공용)
+│   │   │   ├── perception_node.py   runtime  wrapper 토픽 → /target
+│   │   │   ├── control_core.py      runtime  상태·P 제어 로직 (ROS 없음)
+│   │   │   ├── control_node.py      runtime  /target → /control/pan_tilt_cmd, /tracking_status
+│   │   │   ├── serial_core.py       runtime  OpenCR 시리얼 상태 기계 (ROS 없음, DRY/LIVE)
+│   │   │   ├── opencr_node.py       runtime  ROS ↔ USB Serial ↔ OpenCR
+│   │   │   ├── dry_bridge.py        test     포트를 열지 않는 opencr_node 기본(DRY sink) 모드
+│   │   │   ├── test_control_dry.py  test     문제 2 모의 입력 7개 (별도 프로세스)
+│   │   │   ├── test_serial_pty.py   test     bridge ↔ DRY 펌웨어 PTY (+ STOP 복귀 반복)
+│   │   │   └── test_serial_ros.py   test     control → bridge → DRY 펌웨어 PTY (ROS)
+│   │   ├── launch/
+│   │   │   ├── tracker.launch.py    runtime  Pi: wrapper + perception (+ control, + opencr 선택)
+│   │   │   └── control_dry.launch.py test    control + DRY sink
+│   │   ├── config/                 ROS 노드가 읽는 실행 설정 (Source of Truth)
+│   │   │   ├── tracker.yaml  camera.yaml  control.yaml  control_dry.yaml
+│   │   │   └── opencr_live.yaml  serial_dry.yaml
+│   │   └── test/                   ROS 없는 단위 시험 (control_core, serial_core, detector)
+│   └── realsense_tracker_interfaces/
+│       ├── CMakeLists.txt / package.xml        rosidl_generate_interfaces
+│       └── msg/PanTiltCommand.msg
 │
-├── ros2_ws/
-│   └── src/
-│       └── realsense_tracker/
-│           ├── package.xml
-│           ├── setup.py
-│           ├── setup.cfg
-│           ├── resource/
-│           │   └── realsense_tracker
-│           │
-│           ├── realsense_tracker/
-│           │   ├── __init__.py
-│           │   ├── camera_node.py
-│           │   ├── perception_node.py
-│           │   ├── control_node.py
-│           │   └── opencr_node.py
-│           │
-│           ├── launch/
-│           │   └── tracker.launch.py
-│           │
-│           └── config/
-│               └── tracker.yaml
+├── firmware/opencr/
+│   ├── README.md
+│   ├── tracking_controller_2axis/   runtime  최종 2축 펌웨어 (기본 DRY, LIVE는 컴파일 플래그)
+│   ├── tests/                       test     DRY 시리얼 시험, LIVE 단일 명령, host native 시험
+│   ├── commissioning/               commissioning  dxl_discovery, dxl_inspect, pan/tilt commission, tilt_hold_test
+│   ├── legacy/                      legacy   단일 축 파서와 그 시험 (2축 runtime 미사용, 증거 보존)
+│   └── patches/, opencr_source_commit.txt
 │
-├── firmware/
-│   └── opencr/
-│       └── README.md
+├── config/                          노드가 읽지 않는 기록 (README.md 참고)
+│   ├── hardware.yaml                Hardware record — 펌웨어 상수 사본·근거
+│   └── test.yaml                    Verification conditions — 시험 전 확정 조건
 │
-├── config/
-│   ├── robot.yaml
-│   ├── camera.yaml
-│   └── opencr.yaml
-│
+├── tools/                           인지 도구(HSV 튜닝·캡처·평가) + tracking_logger.py + analyze_tracking.py
+├── docs/                            control_interface.md, hardware.md, requirements_traceability.md
 ├── results/
-│   ├── images/
-│   ├── logs/
+│   ├── images/{detection,evaluation}/
+│   ├── logs/{perception,control,opencr,verification}/
 │   ├── plots/
-│   └── metrics.csv
-│
-└── recordings/
-    └── README.md
+│   └── metrics.csv                  요약 지표 (실측값만)
+└── recordings/README.md
 ```
+
+중요:
+- `/target`은 발제문 지정 `geometry_msgs/msg/PointStamped`를 사용한다.
+- `PanTiltCommand.msg`는 팀이 선택한 모터 명령 Interface이며 발제문 필수 형식은 아니다.
+- 팀 확정 요구사항에 따라 Pan/Tilt 2축 추적을 필수 구현한다. 발제문의 `/target` 규약과 안전·검증 기준은 그대로 사용한다.
+- `realsense_tracker_interfaces`를 실제로 사용할 경우 `msg/`만 만들면 안 되며 `package.xml`과 `CMakeLists.txt`에서 `rosidl_generate_interfaces` 설정까지 완료해야 한다.
 
 ---
 
 # 2. 담당 파트별 기본 원칙
 
-프로젝트는 크게 다음과 같이 구분한다.
-
 | 영역 | 주요 담당 | 주요 업무 |
 |---|---|---|
-| `ros2_ws/src/realsense_tracker/realsense_tracker/` | 통합 + 인지 + 제어 | ROS 2 Node 구현 |
-| `ros2_ws/src/realsense_tracker/launch/` | 통합 | 전체 Node 실행 구성 |
-| `ros2_ws/src/realsense_tracker/config/` | 통합 | ROS Node Parameter |
-| `firmware/opencr/` | 제어 | OpenCR / Dynamixel 펌웨어 |
-| `config/` | 통합 | 프로젝트 전체 하드웨어 설정 |
-| `results/` | 전체 | 실험 결과 및 검증 자료 |
-| `recordings/` | 전체 | 영상 / rosbag 등 기록 |
-| `report.md` | 전체 | 최종 보고서 |
-| `presentation.md` | 전체 | 발표 자료 |
+| `perception_node.py` | 인지 | HSV·Contour, ex/ey, area_ratio, 미검출 `/target` |
+| `control_node.py` | 제어 | 상태 전이, Pan/Tilt 2축 P 제어, 제한·정지·복귀 |
+| RealSense ROS 2 wrapper | 인지 + 통합 | D435 Color/Depth/CameraInfo 제공. 인지는 데이터 유효성, 통합은 실행·Launch·연결 담당 |
+| `opencr_node.py` | 통합 + 제어 | ROS 2 ↔ Serial ↔ OpenCR |
+| `launch/`, package | 통합 | 실행 구조와 의존성 |
+| `config/` | 통합 관리 + 각 담당 | HSV·카메라·제어·장치·정지·시험 설정 |
+| `firmware/opencr/` | 제어 | Dynamixel·보드 timeout 정지 |
+| `results/` | 검증·문서화 중심 + 전체 | 이미지·CSV·상태로그·그래프·성능표 |
+| `recordings/` | 통합 + 검증 | bag/영상 기록·재현 정보 |
+| `report.md` | 전체 작성 + 검증 정리 | 문제 1~5 구현·설정·증거·검증·해석·한계 |
+| `team.md` | 팀장 + 전체 | 4인 역할·Issue·PR·리뷰·권한·통합 확인 |
+| `presentation.md` | 전체 + 검증 정리 | 구조→정상→소실/복구→정량→재현/기여→한계 |
 
 ---
 
 # 3. `ros2_ws/`
 
-```text
-ros2_ws/
-└── src/
-```
+ROS 2 Node와 실행 패키지가 위치한다. 통합 담당은 Workspace 전체 구조를 관리한다.
 
-## 역할
+이 Workspace는 **Raspberry Pi에서 build·source·실행**하는 것을 기본으로 한다. 사용자 PC는 SSH 접속과 Git/파일 확인용이며, PC에서 별도의 ROS 2 Runtime을 구성하는 것을 전제로 하지 않는다.
 
-ROS 2 프로젝트의 **개발 Workspace**이다.
-
-실제 ROS 2 Node, Launch, Package가 이 영역에 위치한다.
-
-### 담당
-
-**통합 담당이 전체 구조를 관리한다.**
-
-인지/제어 담당자는 자신이 담당하는 Node의 구현에 참여할 수 있지만, Workspace 전체 구조를 임의로 변경하지 않는다.
-
-### 주의
-
-다음 디렉토리는 Git에 올리지 않는다.
+Git에 올리지 않는 자동 생성물:
 
 ```text
-ros2_ws/build/
-ros2_ws/install/
-ros2_ws/log/
+build/
+install/
+log/
 ```
-
-이들은 `colcon build` 과정에서 자동 생성되는 빌드 결과물이다.
 
 ---
 
-# 4. `ros2_ws/src/realsense_tracker/`
+# 4. 실제 실행 구조 — PC는 SSH, Raspberry Pi가 전체 Runtime
+
+> **팀 실제 배치 기준:** 사용자 PC는 Raspberry Pi에 SSH로 접속하여 명령을 실행하는 작업용 터미널이다. RealSense D435와 모든 ROS 2 Runtime Node는 Raspberry Pi에서 실행한다. 발제문의 PC/Pi 분산 실행 예시와 다르더라도 Interface·안전·시험·제출 기준은 그대로 지킨다.
 
 ```text
-realsense_tracker/
-├── package.xml
-├── setup.py
-├── setup.cfg
-├── resource/
-├── realsense_tracker/
-├── launch/
-└── config/
+사용자 PC
+- SSH 접속용 터미널
+        │
+        │ SSH
+        ▼
+Raspberry Pi
+- RealSense D435 (USB 3)
+- realsense2_camera
+- perception_node
+- control_node
+- opencr_node
+        │
+        │ USB Serial
+        ▼
+OpenCR
+        │
+        ├─ Pan Dynamixel
+        └─ Tilt Dynamixel
 ```
 
-## 역할
+필수 확인:
+- PC → Raspberry Pi SSH 접속
+- Raspberry Pi의 ROS 2 환경 및 Workspace build
+- RealSense D435 USB 인식과 실제 Color/Depth/CameraInfo Topic
+- `perception_node` → `/target` → `control_node` → `/control/pan_tilt_cmd` → `opencr_node`의 Pi 내부 Topic 연결
+- OpenCR Serial port 및 Serial 수신
+- DYNAMIXEL 실제 ID / baud / protocol / direction / power
+- Port 동시 점유 금지
 
-프로젝트의 **메인 ROS 2 패키지**이다.
+ROS 2 Topic은 Raspberry Pi 내부 Node 간에 전달한다. DDS는 ROS 2 내부 통신 계층이지만, **PC와 Raspberry Pi 사이 DDS 통신을 별도 구성하거나 검증할 필요는 없다.**
 
-로봇 시스템을 실제로 실행하는 Node와 Launch 파일이 이곳에 위치한다.
+SSH는 ROS 메시지 전달 경로가 아니라 Raspberry Pi를 원격 조작하는 수단이다.
 
-### 주요 담당
-
-**통합 담당**
-
-### 통합 담당 업무
-
-- ROS 2 Package 관리
-- Node 구조 관리
-- Topic 연결
-- Launch 구성
-- Node 간 데이터 흐름 관리
-- 전체 시스템 실행 테스트
-- 인지/제어 코드 통합
+발제문 내부의 기본 실행 장비 표기와 팀 실제 배치가 다르므로, README에는 **실제 사용한 Raspberry Pi OS / ROS 2 / RealSense / OpenCR 환경**을 측정·확인한 값으로 기록한다.
 
 ---
 
-# 5. `realsense_tracker/`
+# 5. RealSense ROS 2 wrapper
 
-```text
-ros2_ws/src/realsense_tracker/realsense_tracker/
+별도 `camera_node.py`를 기본 구조에서 제거한다. D435용 ROS 2 wrapper(`realsense2_camera`)가 이미 Color/Depth/CameraInfo를 Topic으로 발행하므로, 별도 가공이나 재발행이 필요한 이유가 없다면 `perception_node.py`가 wrapper Topic을 직접 Subscribe한다.
+
+### 담당 분리
+
+통합 담당:
+- RealSense wrapper 설치·실행 방법 정리
+- `tracker.launch.py`에서 wrapper 실행 구성
+- 실제 Topic 이름을 perception 설정에 연결
+- 전체 Node 실행 순서와 ROS 2 연결 확인
+
+인지 담당:
+- D435 실제 입력 확인
+- Color/Depth/CameraInfo Topic 확인
+- encoding / frame_id / stamp 확인
+- 실제 Color/Depth profile 확인
+- `perception_node.py`에서 사용할 Topic과 데이터 유효성 확인
+
+### 실행 후 확인
+
+```bash
+ros2 topic list | grep camera
+ros2 topic list | grep color
+ros2 topic list | grep depth
+ros2 topic list | grep camera_info
 ```
 
-실제 Python ROS 2 Node가 들어가는 디렉토리이다.
+실제 Topic 이름은 설치된 wrapper 버전/namespace 설정에 따라 달라질 수 있으므로 문서에 추측한 이름을 고정하지 않는다. `ros2 topic list`와 `ros2 topic type` 결과를 기준으로 config/README에 기록한다.
 
----
+개발 기준을 안정화하기 위해 실제 확인된 Topic은 `camera.yaml`의 `color_topic`, `aligned_depth_topic`, `camera_info_topic`에 한 번 기록하고 이후에는 해당 설정 또는 Launch remap을 통해 사용한다.
 
-## 5.1 `camera_node.py`
-
+추가 확인·기록:
 ```text
-camera_node.py
+Color Image
+aligned Depth
+CameraInfo
+encoding
+frame_id
+stamp
+D435 serial
+firmware
+SDK / ROS wrapper version
+USB speed
+실제 Color/Depth profile
 ```
 
-### 담당
-
-**통합 담당**
-
-필요에 따라 인지 담당과 협업한다.
-
-### 역할
-
-RealSense D435에서 데이터를 받아 ROS 2 Topic으로 전달한다.
-
-예:
-
-```text
-RealSense D435
-      │
-      ├── RGB Image
-      │
-      └── Depth Image
-              │
-              ▼
-        camera_node
-              │
-              ├── /camera/color/image_raw
-              └── /camera/depth/image_raw
-```
-
-### 주요 작업
-
-- RealSense 연결
-- Camera stream 설정
-- RGB 데이터 Publisher
-- Depth 데이터 Publisher
-- Camera parameter 관리
-- Camera 동작 확인
+Depth는 Pan/Tilt 중심오차 추적의 직접 제어값이 아니라 유효 거리 확인·기록 대상으로 다룬다.
 
 ---
 
 # 6. `perception_node.py`
 
-```text
-perception_node.py
-```
-
 ### 담당
-
-**인지 담당**
-
-통합 담당은 Node 인터페이스와 실행 구조를 지원한다.
+인지.
 
 ### 역할
 
-카메라 데이터를 받아 목표물을 탐지하고 위치 정보를 생성한다.
-
-현재 프로젝트의 핵심 대상:
-
 ```text
-파란색 퍽
+Image
+→ HSV
+→ 색상 Mask
+→ Noise 제거
+→ Contour
+→ 대상 선택
+→ 중심
+→ ex / ey / area_ratio
+→ /target
 ```
 
-예:
+정규화:
 
 ```text
-Camera
-   │
-   │ RGB / Depth
-   ▼
-perception_node
-   │
-   ├── 파란색 퍽 탐지
-   ├── 중심점 계산
-   ├── 거리 계산
-   └── 목표 위치 생성
+ex = (cx - W/2) / (W/2)
+ey = (cy - H/2) / (H/2)
+area_ratio = contour_area / (W × H)
 ```
 
-### 주요 작업
+부호:
+```text
+오른쪽 +
+아래쪽 +
+```
 
-- RGB 이미지 처리
-- 색상 기반 퍽 탐지
-- 퍽 중심 좌표 계산
-- Depth 기반 거리 계산
-- 목표물 탐지 상태 생성
-- 인지 결과 Topic Publish
+### `/target` 계약
 
-### 주의
+```text
+Topic:
+/target
 
-인지 알고리즘 자체와 ROS 2 통신 코드를 가능한 한 분리한다.
+Type:
+geometry_msgs/msg/PointStamped
+
+point.x = ex
+point.y = ey
+point.z = area_ratio
+
+미검출:
+point.z = 0
+```
+
+### 필수 구현
+
+- HSV 범위 config 분리
+- 최소 면적 config 분리
+- 해상도 config 분리
+- 여러 Contour 후보 선택 규칙
+- 원본 위 Contour/목표 중심/영상 중심 표시
+- 정상 / 대상 없음 / 일부 가림 동일 설정 확인
+- 미검출 시 이전 좌표 재사용 금지
+- 원본 영상 timestamp 유지
+- 영상 처리마다 `/target` 발행
+- 미검출 정상 프레임도 `z=0` 발행
+- QoS `best-effort`, depth 1부터 적용 후 호환 확인
+
+Depth를 별도 출력할 경우 `depth_valid`와 `z_m`을 `/target.point.z`와 혼동하지 않도록 별도 규약을 둔다.
+
 
 ---
 
 # 7. `control_node.py`
 
-```text
-control_node.py
-```
-
 ### 담당
+제어.
 
-**제어 담당**
-
-통합 담당과 협업한다.
-
-### 역할
-
-인지 결과를 받아 로봇이 어떻게 움직여야 하는지 결정한다.
-
-예:
+### 기본 완료 범위
 
 ```text
-/perception/target
-        │
-        ▼
- control_node
-        │
-        ├── 정지
-        ├── 전진
-        ├── 좌회전
-        ├── 우회전
-        └── 팔 동작
+Pan/Tilt 2축 P 추적
 ```
 
-### 주요 작업
+Pan/Tilt 두 축 모두 필수 제어 범위다.
 
-- 목표 위치 데이터 Subscribe
-- 목표물과 로봇의 상대 위치 판단
-- 이동 방향 결정
-- 속도 명령 생성
-- 정렬 로직
-- 접근 로직
-- 집기 동작 명령 생성
+### 상태
+
+```text
+IDLE
+TRACKING
+LOST
+```
+
+팀 상태 Topic:
+
+```text
+/tracking_status
+std_msgs/msg/String
+```
+
+### 제어
+
+```text
+pan_command =
+clamp(pan_direction × Kp_pan × ex,
+      -pan_speed_limit,
+      +pan_speed_limit)
+
+tilt_command =
+clamp(tilt_direction × Kp_tilt × ey,
+      -tilt_speed_limit,
+      +tilt_speed_limit)
+```
+
+필수:
+- 작은 명령으로 실제 방향 확인
+- 오른쪽 목표에서 실제 영상 오차가 줄어드는지 확인
+- `direction = +1/-1`
+- Kp/command 단위 기록
+- 속도 상한
+- 회전 범위
+- 중심 deadband
+- 범위 끝에서 바깥 방향 명령 금지
+- Kp 비교는 `Kp_pan`, `Kp_tilt`를 한 세트로 묶은 설정 A/B 두 개를 시험 전에 확정
+
+### 안전 정지
+
+```text
+z=0
+→ LOST
+→ 즉시 정지
+
+/target 0.5초 미수신
+→ LOST
+→ 정지
+```
+
+0.5초 변경 시 이유 기록.
+
+복구:
+
+```text
+신선한 목표 3프레임 연속 검출
+→ TRACKING
+```
 
 ---
 
-# 8. `opencr_node.py`
+# 8. Control → OpenCR Interface
+
+발제문은 모터 명령 형식을 팀이 정의하도록 한다.
+
+팀 기본안:
 
 ```text
-opencr_node.py
+Topic:
+/control/pan_tilt_cmd
+
+Type:
+realsense_tracker_interfaces/msg/PanTiltCommand
 ```
 
-### 담당
+```text
+std_msgs/Header header
+bool stop
+float32 pan_velocity_rad_s
+float32 tilt_velocity_rad_s
+```
 
-**통합 + 제어 담당**
+규칙:
+- Velocity Mode 기준
+- Pan은 좌우 추적 필수
+- Tilt는 상하 추적 필수
+- 두 축 모두 실제 오차가 줄어드는 방향을 검증
+- ROS 2 단위 `rad/s`
+- Firmware 단위 변환 위치 명시
+- `stop=true`이면 속도 0
+- Publish 주기 실제 구현값 기록
+- 부호 실제 장착 기준 검증
+
+실제 구현이 다른 Message를 사용하면 이 문서와 네비게이터, README, 검증 명령을 함께 수정한다.
+
+---
+
+# 9. `opencr_node.py`
+
+### 담당
+통합 + 제어.
 
 ### 역할
 
-ROS 2에서 생성된 제어 명령을 OpenCR로 전달한다.
-
 ```text
-control_node
-     │
-     │ ROS 2
-     ▼
-opencr_node
-     │
-     │ Serial
-     ▼
-OpenCR
-     │
-     ▼
-Dynamixel
+ROS 2 motor command
+→ Serial Protocol
+→ OpenCR
+→ Dynamixel
 ```
 
-### 주요 작업
-
-- Serial 포트 연결
-- OpenCR 통신
-- ROS 2 명령 Subscribe
-- 명령을 Serial Protocol로 변환
+주요 작업:
+- Serial port 연결 (`/dev/serial/by-id/...`, 115200)
+- ROS 2 command Subscribe (명령 나이 0.15 s, 속도 상한 0.05 rad/s 검사)
+- 단위 변환은 하지 않음: rad/s 그대로 `VEL p t` 전송 → 펌웨어가 원시 단위로 변환
+- Serial Protocol 변환 (STATUS/CHECK/HOLD/ARM/VEL/STOP/DISARM)
+- DRY/LIVE 모드 확인, 명시적 `/opencr/prepare`·`/opencr/arm`·`/opencr/disarm`, FAULT 래치 (자동 재ARM 없음)
 - OpenCR 상태 수신
-- 모터 상태 Publish
 - 통신 오류 처리
+- 실제 명령 주기 확인
+
+`control_node`와 `opencr_node`는 같은 Raspberry Pi에서 실행한다. `/control/pan_tilt_cmd`의 publisher/subscriber 연결을 `ros2 topic info`와 `ros2 topic echo`로 확인하며, PC↔Pi DDS 연결은 요구하지 않는다.
 
 ---
 
-# 9. `launch/`
-
-```text
-launch/
-└── tracker.launch.py
-```
+# 10. `firmware/opencr/`
 
 ### 담당
+제어.
 
-**통합 담당**
+주요 작업:
+- OpenCR Firmware
+- DYNAMIXEL ID / baud / protocol 확인
+- Pan/Tilt 두 축 방향 확인
+- 속도/각도 제한
+- Serial command 처리
+- 안전 정지
+- watchdog
+- build/upload
+- Hardware 시험
 
-### 역할
-
-프로젝트에 필요한 Node를 한 번에 실행한다.
-
-예:
-
-```bash
-ros2 launch realsense_tracker tracker.launch.py
-```
-
-실행 결과:
-
-```text
-tracker.launch.py
-│
-├── camera_node
-├── perception_node
-├── control_node
-└── opencr_node
-```
-
-### 주요 작업
-
-- Node 실행 구성
-- Parameter 전달
-- 실행 순서 관리
-- 전체 시스템 실행 테스트
-
----
-
-# 10. ROS 2 `config/`
+통신 중단:
 
 ```text
-ros2_ws/src/realsense_tracker/config/
-└── tracker.yaml
-```
-
-### 담당
-
-**통합 담당**
-
-### 역할
-
-ROS 2 Node에서 사용하는 Parameter를 관리한다.
-
-예:
-
-```yaml
-camera:
-  resolution: ...
-  fps: ...
-
-control:
-  linear_speed: ...
-  angular_speed: ...
-
-opencr:
-  port: ...
-  baudrate: ...
-```
-
-실제 Parameter는 각 담당자가 필요한 값을 제안하고 통합 담당이 최종 관리한다.
-
----
-
-# 11. `firmware/opencr/`
-
-```text
-firmware/
-└── opencr/
-```
-
-### 담당
-
-**제어 담당**
-
-### 역할
-
-OpenCR에서 실행되는 Arduino 기반 펌웨어를 관리한다.
-
-```text
-ROS 2
-  │
-  │ Serial
-  ▼
-OpenCR Firmware
-  │
-  ├── Dynamixel
-  ├── Motor
-  └── Sensor
-```
-
-### 주요 작업
-
-- OpenCR Arduino 코드
-- Serial Protocol
-- Dynamixel 제어
-- 모터 명령 처리
-- 센서 상태 처리
-- 모터 상태 반환
-- Firmware 빌드 및 업로드
-- Hardware 테스트
-
-### 중요
-
-ROS 2 Python 코드와 OpenCR Firmware를 혼합하지 않는다.
-
-```text
-ros2_ws/       → Raspberry Pi에서 실행
-firmware/      → OpenCR에서 실행
+command timeout
+→ 마지막 명령 유지 금지
+→ 모터 정지
 ```
 
 ---
 
-# 12. `config/`
+# 11. `config/`
 
-```text
-config/
-├── robot.yaml
-├── camera.yaml
-└── opencr.yaml
-```
+결과를 보기 전에 설정을 확정하고 실제 사용값을 보존한다.
 
-### 담당
+> 실제 구현: ROS 노드가 읽는 값은 `ros2_ws/src/realsense_tracker/config/`에, 노드가 읽지 않는 기록·시험 조건은 `lv2_module5/config/`에 둔다.
+> 같은 값을 여러 파일에 복사하지 않는다. 상세: `config/README.md`
 
-**통합 담당**
+| 파일 | 위치 | 주요 키 | 비고 |
+|---|---|---|---|
+| `tracker.yaml` | 패키지 config | `hsv_lower`, `hsv_upper`, `min_area_ratio`, `blur_ksize`, `morph_ksize`, `use_depth`, `enforce_depth_range`(기본 false), QoS | 인지 (가이드 초안의 vision.yaml 역할) |
+| `camera.yaml` | 패키지 config | `width`, `height`, `fps`, `color_profile`, `depth_profile`, `color_topic`, `aligned_depth_topic`, `camera_info_topic` | launch가 해상도로 wrapper 프로파일 생성 |
+| `control.yaml` | 패키지 config | `kp_pan`, `kp_tilt`, `pan/tilt_speed_limit_rad_s`, `pan/tilt_deadband`, `pan/tilt_direction`, `target_timeout_sec: 0.5`, `recovery_frames: 3` | Velocity 방식 고정. 각도 제한 키 없음 → 펌웨어 엔코더 경계 |
+| `control_dry.yaml` | 패키지 config | 위와 같은 키의 고정 모의값 + opencr_node DRY sink | 문제 2 시험용 |
+| `opencr_live.yaml` | 패키지 config | `port`(/dev/serial/by-id/...), `usb_serial_baudrate: 115200`, `expected_board_mode: LIVE`, `enable_live_hardware: true`, `command_max_age_sec`, `csv_path` | 실제 모터 |
+| `serial_dry.yaml` | 패키지 config | 위와 같고 `expected_board_mode: DRY` | DRY 펌웨어 시험 |
+| `hardware.yaml` | lv2_module5/config | 모터 모델·ID·bus baud·protocol·방향, 펌웨어 한계(0.05 rad/s, 300 ms, watchdog, 경계 counts) | 펌웨어는 YAML을 못 읽음 → .ino 상수가 SoT, 이 파일은 사본 |
+| `test.yaml` | lv2_module5/config | 30 s, 가림 2 s × 5, 복구 3 s, Kp A/B(null → 시험 전 확정), 30/10 프레임 | 시험 조건 |
 
-각 담당자의 하드웨어 설정 정보를 취합하여 관리한다.
-
----
-
-## `robot.yaml`
-
-### 내용
-
-로봇 기본 정보 및 공통 설정
-
-예:
-
-```yaml
-robot:
-  name: ...
-  wheel_radius: ...
-  wheel_base: ...
-```
+방향(direction)은 `control.yaml` 한 곳에서만 적용한다. 회전 범위는 실제 엔코더를 아는 OpenCR 펌웨어가 담당한다 (control_node는 위치를 적분하지 않는다).
 
 ---
 
-## `camera.yaml`
+# 12. `launch/`
 
-### 내용
+통합 담당이 필요한 Node와 Parameter 경로, 실행 순서를 구성하고 README에 기록한다.
 
-RealSense 설정
+팀 실제 구조에서는 `tracker.launch.py`가 **Raspberry Pi에서** RealSense wrapper, `perception_node`, `control_node`를 실행하는 기준이다. `opencr_node`도 Raspberry Pi에서 실행하며, 안전상 DRY/LIVE 모드 분리가 필요하면 별도 실행 또는 명시적 파라미터로 구분한다. PC에서 ROS Runtime Node를 실행하는 Launch 구조는 사용하지 않는다.
 
-예:
-
-```yaml
-camera:
-  width: ...
-  height: ...
-  fps: ...
-```
-
-### 담당
-
-**인지 + 통합**
+실제 인자: `start_control`(기본 false), `start_opencr`(기본 false, `opencr_params` 기본 opencr_live.yaml), `start_realsense`(기본 true), `tracker_params`, `camera_config`, `control_params`(기본 control.yaml).
+opencr_node를 실행해도 모터는 `/opencr/prepare` → `/opencr/arm` 서비스를 운영자가 호출하기 전까지 움직이지 않는다. 모의 시험은 `control_dry.launch.py`.
 
 ---
 
-## `opencr.yaml`
+# 13. 문제 2 모의 입력 시험
 
-### 내용
+모터 출력을 끄고 **발제문 기본 입력에 2축 확인 입력을 추가해 총 7개**를 검증한다.
 
-OpenCR 및 Dynamixel 관련 설정
+| 입력 | 기대 결과 |
+|---|---|
+| `x=0, y=0, z>0` | Pan/Tilt 모두 불필요한 회전 없음 |
+| `x=+0.4, y=0, z>0` | Pan 오른쪽 오차 감소 방향 명령 |
+| `x=-0.4, y=0, z>0` | Pan 반대 방향 명령 |
+| `x=0, y=+0.4, z>0` | Tilt 아래쪽 오차 감소 방향 명령 |
+| `x=0, y=-0.4, z>0` | Tilt 반대 방향 명령 |
+| `z=0` | Pan/Tilt 모두 정지 |
+| `/target` 발행 중단 | 0.5초 timeout 후 Pan/Tilt 모두 정지 |
 
-예:
-
-```yaml
-opencr:
-  port: /dev/ttyACM0
-  baudrate: ...
-```
-
-### 담당
-
-**제어 + 통합**
+상태·명령·시간 로그를 남긴다.
 
 ---
 
-# 13. `results/`
+# 14. `results/`
 
 ```text
 results/
@@ -544,463 +498,275 @@ results/
 └── metrics.csv
 ```
 
-## 역할
+### images
+- 정상
+- 대상 없음
+- 일부 가림
+- 원본
+- Mask
+- 검출 결과
+- 평가 프레임 근거
 
-실험 및 테스트 결과를 저장한다.
-
----
-
-## `results/images/`
-
-### 담당
-
-**전체**
-
-저장 예:
+### logs
 
 ```text
-images/
-├── detection/
-├── camera/
-└── system/
+perception/     장면 log.csv, 사람 대조 평가 CSV, perception_node 로그
+control/        ROS 제어 DRY·시리얼 bridge 시험 (Pi)
+opencr/         모터 스캔·상태 조회·축별 commission·2축 LIVE 단일 명령
+verification/   tracking_logger CSV (문제 3·4·5), recovery_trials.csv, interruption_trials.csv
 ```
 
-예:
+### plots
+- Kp 비교
+- 수평 ex
+- RMSE
+- 복구 시간
+- FPS
+- 검출률
+- 유효 추적 비율
 
-- 퍽 탐지 결과
-- 카메라 화면
-- 로봇 동작 결과
-- 최종 테스트 사진
+### metrics.csv
 
----
-
-## `results/logs/`
-
-### 담당
-
-**전체**
-
-예:
-
-```text
-logs/
-├── ros2/
-├── perception/
-├── control/
-└── opencr/
-```
-
-ROS 2 실행 로그, 오류 로그, 테스트 로그 등을 저장한다.
-
----
-
-## `results/plots/`
-
-### 담당
-
-**전체**
-
-실험 데이터를 그래프로 만든 결과를 저장한다.
-
-예:
-
-- 위치 오차
-- 거리 오차
-- 제어 응답
-- 탐지 성공률
-- 처리 시간
-
----
-
-## `results/metrics.csv`
-
-### 담당
-
-**통합 + 전체**
-
-최종 성능 측정값을 기록한다.
-
-예:
+요약 지표 표 (실측값만, 출처 열 포함):
 
 ```csv
-test,success_rate,error,detection_time
-test_01,0.95,0.12,0.08
+run_id,problem,metric,value,unit,sample_count,source,note
+```
+
+프레임별 원본 기록은 `results/logs/verification/<run_id>.csv` (`tools/tracking_logger.py`):
+
+```csv
+run_id,time_s,stamp_ns,receive_time_s,detected,ex,ey,area_ratio,state,stop,pan_command,tilt_command,command_unit
 ```
 
 ---
 
-# 14. `recordings/`
+# 15. 검증·문서화 업무
+
+시험 전:
+- 대상
+- 장면
+- 거리
+- 해상도
+- Kp 설정 세트 2개(A/B): 각 세트에 `Kp_pan`, `Kp_tilt` 포함
+- 반복 횟수
+- 속도 제한
+- 각도 제한
+- deadband
+- timeout
+- 복구 판정
+- 산식
+- 로그 컬럼
+
+필수 시험:
+1. 정상 추적 30초 이상
+2. 약 2초 가림 후 현재 시야 안 재등장 5회
+3. `/target` 발행 중단 1회 이상
+4. 제어 통신 중단 1회 이상
+5. Pan/Tilt Kp 설정 세트 2종(A/B) × 각 3회 = 총 6회
+
+복구 성공 판정:
 
 ```text
-recordings/
-└── README.md
+재등장 후 3초 이내 TRACKING
 ```
 
-### 담당
-
-**전체**
-
-실험 영상 및 ROS 데이터 기록을 관리한다.
-
-예:
-
-```text
-recordings/
-├── README.md
-├── test01/
-├── test02/
-└── final/
-```
-
-대용량 영상이나 rosbag은 Git에 직접 저장하지 않는 것을 원칙으로 한다.
-
-필요한 경우 README에 파일의 저장 위치와 설명을 기록한다.
+실패 회차도 포함한다.
 
 ---
 
-# 15. `report.md`
-
-### 담당
-
-**전체 → 통합 담당이 최종 취합**
-
-최종 보고서 작성 영역이다.
-
-구성 예:
+# 16. 성능 지표
 
 ```text
-1. 프로젝트 개요
-2. 시스템 구성
-3. 하드웨어 구성
-4. 소프트웨어 구성
-5. ROS 2 구조
-6. 인지 알고리즘
-7. 제어 알고리즘
-8. OpenCR / Dynamixel
-9. 통합 테스트
-10. 결과 분석
-11. 문제점 및 개선점
-12. 결론
+처리 FPS
+검출률
+배경 오검출
+수평/수직 RMSE
+유효 추적 비율
+복구 성공률
+복구 시간
 ```
 
-각 담당자는 자신의 파트 내용을 작성하고 통합 담당이 최종 취합한다.
+검출률: 목표가 보이는 최소 30프레임을 사람이 대조.
+배경 오검출: 목표 없는 최소 10프레임을 사람이 대조.
+수평 RMSE: `sqrt(mean(ex²))`, 검출·TRACKING 구간.
+수직 RMSE: `sqrt(mean(ey²))`, 검출·TRACKING 구간.
+복구 실패는 0초로 기록하지 않는다.
 
 ---
 
-# 16. `presentation.md`
+# 17. `recordings/`
 
-### 담당
+대표 성공과 소실·복귀 장면 각각 10~30초.
 
-**전체**
+bag 기록:
+- 영상
+- `/target`
+- `/tracking_status`
+- 모터 명령
 
-최종 발표 자료의 내용을 관리한다.
+`recordings/README.md`:
+- 위치
+- metadata
+- 파일명·크기·hash
+- Topic
+- 기준 commit
+- record/replay 명령
+- 모터 비활성 방법
+- 재현 확인자/날짜/결과
 
-각 파트 담당자는 자신의 담당 영역을 작성한다.
+재처리는 `/target_replay` 같은 별도 Topic 사용.
+실제 모터 출력은 비활성화.
+
+---
+
+# 18. `report.md`
+
+문제 1~5 각각:
+1. 구현 내용
+2. 실행 조건
+3. 결과물
+4. 측정 결과
+5. 해석
+6. 심화 수행 여부
+7. 한계
+
+---
+
+# 19. `presentation.md`
 
 ```text
+시스템 구조
+→ 정상 Pan/Tilt 2축 추적
+→ 소실/정지/복귀
+→ 통신 중단 정지
+→ Kp/정량 결과
+→ bag 재현
+→ 팀 기여
+→ 한계/추가 확장
+```
+
+---
+
+# 20. `team.md`
+
+```text
+| 이름 / GitHub ID | 역할 | 담당 Issue | 병합된 본인 PR | 다른 PR 리뷰 | 구현·검증 내용 |
+```
+
+4명 모두 본인 PR 1건 이상 병합 + 타인 PR 리뷰 1건 이상.
+팀장 PR도 타인 승인 후 병합.
+
+---
+
+# 21. 작업 영역 충돌 방지
+
+```text
+인지 → perception_node.py
+제어 → control_node.py / firmware/opencr/
+통합 → RealSense wrapper 실행·Launch / opencr_node.py / package / 전체 연결
+검증 → results / recordings / 시험표 / 문서 증빙
+```
+
+발제문 `/target` 규약은 임의 변경하지 않는다.
+
+---
+
+# 22. Git 작업 흐름
+
+현재 팀 운영:
+
+```text
+dev/<이름>
+→ 구현·시험
+→ push
+→ Pull Request
+→ Review / 수정
+→ 팀장 Merge
+→ main 동기화
+```
+
+Issue 완료 조건, PR 실행 증거, 의미 있는 리뷰, 팀장 최종 병합을 연결한다.
+
+---
+
+# 23. 전체 시스템에서 담당 위치
+
+```text
+D435 Color
+   ↓
 인지
-→ 카메라 및 퍽 탐지
-
+HSV/Contour → ex/ey/area_ratio
+   ↓
+/target PointStamped
+   ↓
 제어
-→ 이동 및 모터 제어
-
+IDLE/TRACKING/LOST
+Pan/Tilt P control
+   ↓
+motor command
+   ↓
 통합
-→ ROS 2 구조 및 전체 시스템 연결
-```
-
----
-
-# 17. `team.md`
-
-### 담당
-
-**팀 전체**
-
-팀원 역할과 담당 업무를 기록한다.
-
-예:
-
-```text
-| 이름 | 담당 | 주요 업무 |
-|---|---|---|
-| 팀원 A | 인지 | RealSense / 퍽 탐지 |
-| 팀원 B | 제어 | 이동 / Dynamixel |
-| 희우 | 통합 | ROS 2 / 시스템 통합 |
-```
-
----
-
-# 18. 작업 영역 충돌 방지 규칙
-
-## 원칙 1. 다른 담당자의 핵심 코드를 임의로 수정하지 않는다.
-
-예:
-
-```text
-인지 담당
-→ perception_node.py
-
-제어 담당
-→ control_node.py
-
-통합 담당
-→ launch / package / 전체 연결
-```
-
-수정이 필요하면 담당자와 먼저 협의한다.
-
----
-
-## 원칙 2. Topic 인터페이스는 임의로 변경하지 않는다.
-
-예:
-
-```text
-/perception/target
-```
-
-을 다른 이름으로 변경해야 한다면 팀원 전체에게 공유한다.
-
----
-
-## 원칙 3. 하드웨어 설정은 `config/`에서 관리한다.
-
-코드 안에 다음처럼 하드코딩하지 않는 것을 권장한다.
-
-```python
-port = "/dev/ttyACM0"
-```
-
-가능하면:
-
-```text
-config/opencr.yaml
-```
-
-에서 관리한다.
-
----
-
-## 원칙 4. 빌드 결과물은 Git에 올리지 않는다.
-
-```text
-build/
-install/
-log/
-```
-
-은 커밋하지 않는다.
-
----
-
-## 원칙 5. 실험 결과는 `results/`에 저장한다.
-
-```text
-코드       → ros2_ws/
-펌웨어     → firmware/
-설정       → config/
-실험 결과  → results/
-영상/기록  → recordings/
-문서       → *.md
-```
-
----
-
-# 19. Git 작업 영역
-
-팀원은 기본적으로 자신의 Branch에서 작업한다.
-
-```text
-main
- │
- ├── member-a
- ├── member-b
- └── sangjun
-```
-
-작업 흐름:
-
-```text
-Branch 생성
-    ↓
-작업
-    ↓
-git status
-    ↓
-git add
-    ↓
-git commit
-    ↓
-자신의 Fork/Remote에 백업
-    ↓
-팀 Remote에 반영
-```
-
-작업 전에는 항상 최신 상태를 확인한다.
-
-```bash
-git status
-git fetch origin
-```
-
-공유 파일을 수정해야 하는 경우 다른 팀원의 작업과 충돌하지 않는지 확인한다.
-
----
-
-# 20. 전체 시스템에서 각 담당자의 위치
-
-```text
-                         ┌──────────────────┐
-                         │  RealSense D435  │
-                         └────────┬─────────┘
-                                  │
-                         ┌────────▼─────────┐
-                         │   Camera Node    │
-                         │    [통합]        │
-                         └────────┬─────────┘
-                                  │
-                              RGB/Depth
-                                  │
-                         ┌────────▼─────────┐
-                         │ Perception Node  │
-                         │     [인지]       │
-                         └────────┬─────────┘
-                                  │
-                            Target Data
-                                  │
-                         ┌────────▼─────────┐
-                         │   Control Node   │
-                         │     [제어]       │
-                         └────────┬─────────┘
-                                  │
-                              Command
-                                  │
-                         ┌────────▼─────────┐
-                         │   OpenCR Node    │
-                         │  [통합 + 제어]   │
-                         └────────┬─────────┘
-                                  │
-                                Serial
-                                  │
-                         ┌────────▼─────────┐
-                         │      OpenCR      │
-                         │     [제어]       │
-                         └────────┬─────────┘
-                                  │
-                              Dynamixel
-```
-
----
-
-# 21. 한눈에 보는 담당 영역
-
-```text
-┌─────────────────────────────────────────┐
-│                 통합                    │
-│                                         │
-│  ROS 2 Workspace                        │
-│  Package                                │
-│  Camera Node                            │
-│  Launch                                 │
-│  Config                                 │
-│  Topic 연결                             │
-│  전체 시스템 테스트                     │
-└─────────────────────────────────────────┘
-
-┌─────────────────────────────────────────┐
-│                  인지                   │
-│                                         │
-│  RealSense 데이터 처리                  │
-│  파란색 퍽 탐지                         │
-│  위치/거리 계산                         │
-│  Perception Node                        │
-└─────────────────────────────────────────┘
-
-┌─────────────────────────────────────────┐
-│                  제어                   │
-│                                         │
-│  Control Node                            │
-│  이동 제어                              │
-│  Dynamixel 제어                         │
-│  OpenCR Firmware                        │
-│  모터/센서 통신                         │
-└─────────────────────────────────────────┘
-```
-
----
-
-# 22. Phase별 담당
-
-| Phase | 주요 작업 | 주 담당 |
-|---|---|---|
-| Phase 1 | 환경 구축 | 통합 |
-| Phase 2 | ROS 2 구조 구축 | 통합 |
-| Phase 3 | RealSense / 퍽 탐지 | 인지 |
-| Phase 4 | 인지 → 제어 연결 | 인지 + 제어 + 통합 |
-| Phase 5 | OpenCR / Dynamixel | 제어 |
-| Phase 6 | 전체 통합 | 통합 + 전체 |
-| Phase 7 | 실제 미션 테스트 | 전체 |
-| Phase 8 | 결과 / 문서화 | 전체 |
-
----
-
-# 23. 최종 작업 원칙
-
-이 프로젝트의 기본적인 코드 소유 영역은 다음과 같이 한다.
-
-```text
-camera_node.py
-    → 통합
-
-perception_node.py
-    → 인지
-
-control_node.py
-    → 제어
-
-opencr_node.py
-    → 통합 + 제어
-
-tracker.launch.py
-    → 통합
-
-tracker.yaml
-    → 통합
-
-config/*.yaml
-    → 통합 관리 + 각 담당 설정 협의
-
-firmware/opencr/
-    → 제어
-
-results/
-    → 전체
-
-report.md
-presentation.md
-    → 전체
-```
-
-### 핵심
-
-> **각 담당자는 자신의 기능을 구현하고, 통합 담당은 각 기능을 ROS 2를 통해 하나의 시스템으로 연결한다.**
-
-따라서 개발 순서는:
-
-```text
-인지 구현
+Raspberry Pi 내부 ROS 2 Topic
+Pi ↔ OpenCR USB Serial
    ↓
-제어 구현
-   ↓
-각각 단독 테스트
-   ↓
-ROS 2 Topic 연결
-   ↓
-통합 테스트
-   ↓
-OpenCR 연결
-   ↓
-실제 로봇 테스트
+OpenCR
+   ├─ Pan Dynamixel
+   └─ Tilt Dynamixel
+        ↓
+카메라 Pan/Tilt 회전
+        ↺
+
+검증
+Interface
+→ 정상 30초
+→ 가림 5회
+→ /target 중단
+→ control 통신 중단
+→ Kp 2종×3회
+→ 지표
+→ bag 재현
+→ 문서/PR 증빙
 ```
 
-로 진행한다.
+---
+
+# 24. 최종 작업 원칙
+
+```text
+시험 조건 사전 확정
+↓
+HSV·Contour
+↓
+/target PointStamped
+↓
+7개 모의 입력(발제 5 + 2축 2)
+↓
+Pan/Tilt 2축 P 제어
+↓
+속도·각도·deadband
+↓
+Raspberry Pi ROS 2 ↔ OpenCR 통합
+↓
+미검출·0.5초 input timeout 정지
+↓
+보드 측 통신중단 정지
+↓
+3프레임 연속 검출 복귀
+↓
+Kp 2종×3회
+↓
+정상 30초 / 가림 5회 / 중단 2종
+↓
+30프레임 검출 + 10프레임 오검출 대조
+↓
+FPS / RMSE / 복구 지표
+↓
+bag 모터 비활성 재현
+↓
+report / team / presentation / 제출 증빙
+↓
+Depth/SEARCHING 등 추가 확장
+```
+
+Pan/Tilt 2축 결과를 필수 결과로 기록한다.

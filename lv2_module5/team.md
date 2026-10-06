@@ -5,7 +5,7 @@
 - 팀명: EYE4 (아이뻐)
 - 프로젝트: Vision Object Tracking System
 - 수행 인원: 4명
-- 팀장: 전승혜
+- 팀장: 전승혜 (SeungHye-J)
 - 팀원: 김상화, 한상준, 조민혁
 - 저장소: `Lv2_EYE4_Assignment`
 
@@ -15,13 +15,16 @@
 
 | 이름 | GitHub ID | 역할 | 담당 Issue | 병합된 본인 PR | 다른 PR 리뷰 | 구현·검증 내용 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 전승혜 | seunghye-J | 팀장 + 검증·문서화 | TODO | TODO | TODO | TODO |
-| 김상화 | SangHwaKim09 | 인지 | TODO | TODO | TODO | TODO |
-| 한상준 | WindForce08 | 통합 | TODO | TODO | TODO | TODO |
-| 조민혁 | eiioitsMin | 제어 | TODO | TODO | TODO | TODO |
+| 전승혜 | SeungHye-J | 팀장 + 검증·문서화 | TODO | [#1](https://github.com/SpartaPA/Lv2_EYE4_Assignment/pull/1), [#2](https://github.com/SpartaPA/Lv2_EYE4_Assignment/pull/2), [#4](https://github.com/SpartaPA/Lv2_EYE4_Assignment/pull/4), [#8](https://github.com/SpartaPA/Lv2_EYE4_Assignment/pull/8) | TODO | 저장소·문서 구조, 시험 조건(test.yaml), 통합본 감사·요구사항 추적, LIVE bridge 모드·지표 도구·문서 (dev/test1, 리뷰 전) |
+| 김상화 | SangHwaKim09 | 인지 | TODO | 미기록 (main 병합 PR 없음 — dev/sanghwa) | TODO | detector·perception_node, HSV 튜닝·캡처·평가 도구, 세 장면·30/10 평가 프레임, D435 wrapper·QoS 실측 |
+| 한상준 | WindForce08 | 통합 | TODO | [#3](https://github.com/SpartaPA/Lv2_EYE4_Assignment/pull/3), [#5](https://github.com/SpartaPA/Lv2_EYE4_Assignment/pull/5) | TODO | ROS 2 작업 환경·패키지 구성, tracker.launch.py, recordings 문서, 제어 파라미터 초안 |
+| 조민혁 | eiioitsMin | 제어 | TODO | [#6](https://github.com/SpartaPA/Lv2_EYE4_Assignment/pull/6) | TODO | control·serial bridge, 2축 펌웨어, DYNAMIXEL 식별·commissioning, DRY/PTY/USB 시험 기록 |
 
 > 역할은 인지·제어·통합·검증·문서화 영역을 기준으로 분담하며,
 > 공동 작업을 수행하더라도 각자의 구현·검토·시험 기여를 구분하여 기록한다.
+>
+> PR 열은 main의 squash 병합 커밋 작성자 기준으로 확인한 링크다 (2026-10-07). Issue·리뷰 링크는 저장소 기록에서 확인하지 못해 TODO로 둔다 — 실제 링크만 적는다.
+> 구현·검증 내용은 각자의 작업 브랜치 커밋(dev/sanghwa, dev/minhyeok, dev/sangjun) 기준이며, 장비 시험 여부는 report.md를 따른다.
 
 ---
 
@@ -66,7 +69,7 @@
 - 인지 노드와 제어 노드 연결
 - `/target` 메시지 형식·단위·부호 확인
 - QoS 및 실행 순서 정리
-- PC와 Raspberry Pi 간 ROS2 통신 확인
+- PC(SSH) → Raspberry Pi 접속, Pi 내부 ROS 2 노드 간 Topic 연결 확인 (모든 노드는 Pi에서 실행)
 - Raspberry Pi에서 OpenCR 빌드·업로드·시리얼 확인
 - 전체 시스템 실행 절차 정리
 - ROS2 bag 기록 및 재생
@@ -113,7 +116,7 @@ Issue
 | --- | --- | --- |
 | 전승혜 | 시험 조건 확정, 문서 정리, 정량 검증 및 제출 증빙 | TODO |
 | 김상화 | wrapper 입력 유효성, HSV·Contour, `/target` 발행 | TODO |
-| 한상준 | wrapper·Launch·패키지, PC↔Pi DDS, Serial 연결, bag 재현 | TODO |
+| 한상준 | wrapper·Launch·패키지, Raspberry Pi 단일 runtime 연결, Serial 연결, bag 재현 | TODO |
 | 조민혁 | Pan/Tilt P 제어·제한, 상태·복구, OpenCR firmware·watchdog | TODO |
 
 ### PR 규칙
@@ -174,4 +177,5 @@ Issue
 - [ ] 목표 존재 최소 30프레임, 목표 없음 최소 10프레임 평가
 
 최종 통합 확인자·날짜·기준 commit·실행 조건·결과·미완료 사항: TODO.
+통합 작업 브랜치: `dev/test1` (통합본 감사·수정, 2026-10-07). 실제 장비 검증 전이며 main 병합은 PR 리뷰 후 팀장이 수행한다.
 제출 태그 `lv2-module5-submit` 및 증빙 링크: TODO (최종 검증 후 생성).
