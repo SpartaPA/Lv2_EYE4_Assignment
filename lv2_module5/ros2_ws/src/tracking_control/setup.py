@@ -25,6 +25,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'control_node = tracking_control.control_node:main'
         ],
     },
 )
