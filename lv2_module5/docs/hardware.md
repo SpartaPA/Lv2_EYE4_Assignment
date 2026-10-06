@@ -44,3 +44,31 @@ C++ 표준 라이브러리의 이름 충돌을 해결하기 위해 다음 패치
 ### 모터 식별 시험 증거
 
 [모터 스캔 원본 로그](../results/logs/opencr/discovery_sdk_fix_20261006_103249/scan.log)
+
+### 모터 상태 읽기 시험 — 2026-10-06
+
+- 시험 방식: 제어 레지스터 쓰기 없이 상태 조회
+- 원본 증거: [inspect.log](../results/logs/opencr/inspect_20261006_110144/inspect.log)
+
+| 항목 | Pan (ID 11) | Tilt (ID 12) |
+|---|---:|---:|
+| 모델 번호 | 1020 | 1020 |
+| 프로토콜 | 2.0 | 2.0 |
+| Operating_Mode | 1 | 1 |
+| Drive_Mode | 0 | 0 |
+| Torque_Enable | 0 | 0 |
+| Homing_Offset | 0 | 0 |
+| Min_Position_Limit | 0 | 0 |
+| Max_Position_Limit | 4095 | 4095 |
+| Velocity_Limit | 200 | 200 |
+| Present_Position | 3172 | 3249 |
+| Present_Velocity | 0 | 0 |
+| Present_Input_Voltage | 120 | 121 |
+| Present_Temperature | 31 | 32 |
+| Hardware_Error_Status | 0 | 0 |
+
+두 모터 모두 속도 제어 모드이며, 조회 시 토크는 비활성화 상태였다.
+모든 조회가 성공했고 하드웨어 오류 비트는 보고되지 않았다.
+
+현재 위치는 시험 당시의 엔코더 값이며 중립 위치 또는 안전 가동 범위로
+확정하지 않았다. 실제 구동 방향, 기구적 가동 범위, 정지 성능은 미검증이다.
