@@ -1,0 +1,12 @@
+PROCESSES controller_pid=4103 bridge_pid=4104 probe_pid=4086
+PASS 1 center
+PASS 2 x +0.4
+PASS 3 x -0.4
+PASS 4 y +0.4
+PASS 5 y -0.4
+PASS 6 z=0
+PASS three-frame recovery
+PASS 7 target publisher silence
+PASS actual controller termination -> dry bridge timeout and zero
+PASS hardware mode rejected
+ALL REPOSITORY SEPARATE-PROCESS DRY CHECKS PASSED; SERIAL_OPENED=FALSE

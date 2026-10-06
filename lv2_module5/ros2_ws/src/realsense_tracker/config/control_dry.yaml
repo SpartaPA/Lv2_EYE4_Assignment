@@ -1,0 +1,13 @@
+# ROS parameter file, distinct from the plain host-contract config/opencr.yaml.
+control_node:
+  ros__parameters:
+    kp_pan: 0.1
+    kp_tilt: 0.1
+    max_velocity_rad_s: 0.05
+    deadband: 0.03
+    target_timeout_sec: 0.5
+    recovery_frames: 3
+opencr_node:
+  ros__parameters:
+    dry_run: true
+    csv_path: ""

@@ -12,10 +12,11 @@
 |---|---|
 | 팀 가이드의 ROS 2 인터페이스 | 구현 기준 |
 | 기존 단일 속도 OpenCR 파서 | 구현 및 시험 완료 |
-| 2축 시리얼 프로토콜 | 아래 제안에 대한 통합 담당 합의 후 구현 |
-| 실제 DYNAMIXEL 제어·피드백 | 미검증 |
+| 2축 시리얼 프로토콜 | tracking_controller_2axis 구현 및 초기 DRY/LIVE 시험 완료 |
+| 실제 DYNAMIXEL 제어·피드백 | 중립 부근 6개 초기 LIVE 시험 통과, 전체 고장 시험 미완료 |
 | 실제 정지·각도·속도 제한 | 미검증 |
-| 전체 2축 추적 | 미검증 |
+| ROS 제어 및 dry bridge | 본 후보 구현 추가, repository 별도 프로세스 시험 대기 |
+| 전체 2축 카메라 추적 | 미검증 |
 
 검증하지 않은 하드웨어 값은 임의로 확정하지 않는다.
 
@@ -231,7 +232,7 @@ opencr_node는 PC 명령이 끊겼을 때 마지막 비영 속도를 반복 전�
 
 USB 시리얼 baud rate와 DYNAMIXEL bus baud rate는 다른 설정이다.
 
-## 11. 현재 구현된 단일 속도 프로토콜
+## 11. 보존된 과거 단일 속도 프로토콜
 
 기존 시험 코드의 명령:
 
@@ -264,50 +265,32 @@ STATE ARMED NONZERO
 EVENT TIMEOUT DISARMED
 ```
 
-## 12. 2축 시리얼 프로토콜 제안
+## 12. 구현된 2축 펌웨어 프로토콜
 
-다음 형식은 아직 구현하지 않은 제안이며, opencr_node 담당과 합의한 뒤 적용한다.
+대상: tracking_controller_2axis. 초기 DRY 및 6개 LIVE 시험 통과 기록은
+integration_dry_20261006_140439와 integration_live_20261006_141057에 있다.
+ROS opencr_node의 실제 시리얼 연결은 아직 구현하지 않았다.
 
-```text
-ARM
-VEL <pan_rad_s> <tilt_rad_s>
-STOP
-DISARM
-STATUS
-```
-
-예시:
-
-```text
-VEL 0.02 -0.01
-VEL 0 0
-```
-
-규칙:
-
-- 대소문자를 구분하는 ASCII 명령을 사용한다.
-- LF로 종료하며 CRLF도 허용한다.
-- 명령 최대 길이는 개행을 제외한 63자로 한다.
-- 잘못되거나 과도하게 긴 줄은 다음 개행까지 버린다.
-- VEL은 정확히 두 개의 유한한 수를 요구한다.
-- 각 축의 속도 한계를 검사한다.
-- 어느 한 값이라도 잘못되면 두 축 명령 전체를 거부한다.
-- 수락한 두 축 값을 함께 갱신한다.
-- 비활성화 상태의 VEL은 거부한다.
-- 기존 단일 값 VEL 형식은 2축 버전에서 거부하도록 한다.
-
-워치독 갱신 규칙:
-
-| 명령 | 효과 |
+| 명령 | 동작 |
 |---|---|
-| ARM | 타이머 시작 또는 초기화 |
-| 수락한 VEL | 타이머 초기화 |
-| STOP | 활성화 상태일 때 타이머 초기화 |
-| DISARM | 비활성화 |
-| STATUS | 갱신하지 않음 |
-| 거부한 명령 | 갱신하지 않음 |
+| CHECK | reset 후 모델/모드/토크 OFF/중립 확인 |
+| HOLD | 영속도 및 watchdog 설정 후 토크 ON, 정지 확인 대기 |
+| ARM | HOLD 완료 및 정지 상태에서 1회 구동 허가 |
+| VEL p t | 모터 부호를 적용한 두 축 rad/s, 각 ±0.05 이내 |
+| STOP | 두 축 영속도 요청, 구동 허가 유지 |
+| DISARM | 두 축 영속도 요청, 구동 허가 해제, 토크 유지 |
+| STATUS | 캐시된 상태와 피드백 조회 |
+| SUPPORTED_OFF | 기계적 지지 확인 후 토크 해제, reset 필요 |
 
-호스트는 ARM을 주기적 연결 유지 명령으로 반복 전송하지 않는다.
+LF 종료 ASCII, CRLF 허용, 최대 63자다. 두 값을 모두 검사한 후 순차 쓰기한다.
+형식/범위 오류 또는 거부된 명령은 유효 명령 타이머를 갱신하지 않는다.
+ARM은 타이머를 시작하며 이미 ARM 상태에서 반복 ARM은 거부한다.
+수락한 VEL과 ARM 상태의 STOP은 타이머를 갱신한다. STATUS는 갱신하지 않는다.
+보드 명령 타임아웃은 300 ms이며 두 축 영속도와 DISARM을 요청하고 토크를 유지한다.
+모터 bus watchdog은 200 ms이며 모든 instruction packet이 갱신하므로 별도 보호다.
+ACK는 정지 요청이고 EVENT STOPPED TORQUE_RETAINED는 정지 피드백 확인 이벤트다.
+FAULT 후 STATUS 피드백은 오래된 캐시일 수 있다. GOAL=0,0은 실제 정지 증명이 아니다.
+FAULT/timeout 후 호스트가 자동 ARM을 전송하지 않는다.
 
 ## 13. 모터 피드백 및 오류
 
@@ -335,19 +318,18 @@ VEL 0 0
 
 실제 설정 키와 ROS 파라미터 로딩 방식은 통합 담당과 일치시킨다.
 
-현재 알려진 하드웨어:
+확인된 하드웨어(카메라 뒤에서 정면을 보는 기준):
 
-- 모터 모델: XM430-W350-T 1대 확인
-- 최종 사용 모터 수: 2대
-- 카메라: RealSense D435, 기구에 장착됨
+| 축 | 모델 | ID | 모터 양의 방향 |
+|---|---|---:|---|
+| Pan | XM430-W350-T | 11 | 좌측 |
+| Tilt | XM430-W350-T | 12 | 아래쪽 |
 
-미확정 항목:
-
-- 두 번째 모터의 모델
-- Pan/Tilt 대응 관계
-- 두 모터의 실제 ID, baud rate, 프로토콜
-- 축별 방향, 기준 위치 및 각도 범위
-- 물리 속도 한계와 자세 유지 정책
+DYNAMIXEL bus는 1000000 baud, Protocol 2.0이다. USB는 115200 baud다.
+Pan 기준은 3078, Tilt 중립은 0 modulo 4096이다. 수동 측정 위치는 기구적 최대 한계가 아니다.
+Tilt 토크 해제 시 카메라가 내려가므로 토크 해제 전에 기계적으로 지지한다.
+정상 정지는 영속도와 토크 유지다. 통신/전원/모터 고장 시 자세 유지는 보장하지 않는다.
+전체 경계/정지 지연/통신 고장 시험과 실제 영상 오차 감소 검증은 아직 미완료다.
 
 ## 15. 검증 기준
 
@@ -362,3 +344,18 @@ VEL 0 0
 - bag 재현 시 실제 하드웨어 출력을 비활성화한다.
 
 세부 시험과 증거는 [제어 시험 계획](control_test_plan.md), 빌드·업로드 절차는 [OpenCR README](../firmware/opencr/README.md)를 참고한다.
+## 2026-10-06 ROS dry 구현 단계
+
+`realsense_tracker`의 control_node 및 opencr_node를 구현 후보로 추가했다.
+control_node는 영상 오차에 모터 방향을 한 번 적용한다(Pan -1, Tilt +1).
+opencr_node는 현재 dry_run=true 전용이며 시리얼 포트를 열지 않는다.
+dry_run=false이면 시작을 거부한다. 시리얼 변환·ARM·피드백 처리는 아직 미구현이다.
+`/opencr/dry_status`의 String(JSON)은 모의 명령 처리 상태이며 모터 피드백이 아니다.
+ROS parameter 설정은 패키지의 `config/control_dry.yaml`을 사용한다.
+기존 `lv2_module5/config/opencr.yaml`은 plain host 계약이며 자동 로드하지 않는다.
+표적 시각 검증: 최대 지연 0.5초, 미래 시각 허용 0초. 단조 수신 시간도 검사한다.
+dry bridge 명령 신선도/수신 타임아웃은 0.15초다.
+현재 mock 기본 Kp는 양 축 0.1, deadband 0.03, 속도 상한 0.05 rad/s다.
+이는 A/B 게인 실험 완료나 실제 추적용 승인 설정을 의미하지 않는다.
+독립 workspace 모의 시험 통과와 본 repository 시험 통과를 구분한다.
+검증 절차: [ROS dry 통합 시험](ros_control_dry_steps.md).
