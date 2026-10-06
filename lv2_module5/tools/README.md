@@ -11,6 +11,8 @@ RealSense 영상에서 파란색 목표(퍽)를 HSV 색상으로 찾아, 화면 
 | `tools/hsv_tuning.py` | HSV 범위 튜너 (트랙바) → `tracker.yaml`에 저장 |
 | `tools/image_capture.py` | 정상·미검출·가림 장면 검출 결과 저장 → `results/` |
 | `tools/common.py` | 도구 공통 (경로, 설정 읽기, RealSense 카메라) |
+| `tools/eval_frames.py` | 검출률·배경 오검출 평가 프레임 저장 (ROS) → `results/` + 판정 목록 CSV |
+| `tools/eval_score.py` | 사람이 판정한 CSV로 검출률·배경 오검출 집계 |
 
 검출 순서: 영상 → 블러 → HSV 변환 → 색 마스크 → 잡음 제거 → 외곽선 → **가장 큰 덩어리 1개 선택** → 중심 계산
 
@@ -83,10 +85,10 @@ ros2 run realsense_tracker perception_node --ros-args \
 
 영상 구독 실측 (2026-10-06, RealSense wrapper 640×480 30fps, wrapper 발행 QoS RELIABLE·KEEP_LAST 1, Fast DDS 기본 설정, 다른 프로세스에서 6초 구독):
 
-| 구독 QoS | 컬러 | 정렬 깊이 |
+| 구독 QoS | 컬러 (USB 2.1 / USB 3.2) | 정렬 깊이 (USB 2.1 / USB 3.2) |
 |---|---|---|
-| best effort | 1.2 fps | 0 fps |
-| reliable | 29.4 fps | 29.4 fps |
+| best effort | 1.2 / 1.5 fps | 0 / 0.2 fps |
+| reliable | 29.4 / 29.6 fps | 29.4 / 29.5 fps |
 
 - **best effort 발행은 reliable 구독과 연결되지 않습니다.** `/target`을 받는 쪽(제어 노드 등)은 best effort로 구독해야 합니다.
   (`ros2 topic echo`와 `ros2 bag record`는 발행 쪽 QoS에 맞춰 자동으로 받음)
@@ -103,7 +105,8 @@ ros2 run realsense_tracker perception_node --ros-args \
 | `use_depth` | false | 깊이도 구독해 거리(dist)를 확인 화면·로그에 표시 |
 | `depth_unit_m` | 0.001 | 16UC1 깊이 값 1의 길이(m) |
 | `depth_min_valid_ratio`, `depth_max_spread_cm` | 0.5, 5.0 | 이 기준을 못 넘으면 거리를 믿을 수 없다고 보고 비움 |
-| `publish_debug_image` | false | 확인 화면 발행 |
+| `publish_debug_image` | false | 확인 화면 발행 (평가 도구 `eval_frames.py`에 필요) |
+| `stats_period_sec` | 5.0 | 이 간격(초)마다 처리 FPS·처리 시간 로그 (0이면 끔) |
 | `target_reliable` | false | `/target` 발행 QoS (false = best effort, 위 설명) |
 | `image_reliable` | true | 영상 구독 QoS (true = reliable, 위 설명) |
 
@@ -156,7 +159,54 @@ python tools/image_capture.py --headless   # 화면 없는 SSH (터미널에 n/e
 - `results/logs/perception/log.csv` — 열: `time, scene, found, ex, ey, z, dist_cm, n_candidates, width, height, hsv_ranges, min_area_ratio`
 - 같은 초에 같은 장면을 다시 저장하면 이름 뒤에 `_2`, `_3`이 붙습니다.
 
-## 5. 알아둘 점
+## 5. 성능 평가 (발제문 문제 4 — 처리 FPS, 검출률, 배경 오검출)
+
+### 5-1. 처리 FPS
+
+인지 노드가 `stats_period_sec`(기본 5초)마다 로그를 남깁니다. 발제문 산식(처리 완료 프레임 수 ÷ 실제 경과 초)이며 카메라 설정 FPS와 다릅니다.
+
+```text
+처리 FPS 30.0 (최근 5.0초 동안 150장 처리), 처리 시간 평균 2.8 ms·최대 3.4 ms, 노드가 검출로 표시한 프레임 150/150 (사람 대조 검출률과 다름)
+```
+
+- 처리 시간 = 영상 변환부터 `/target` 발행까지 (노드 안에서 걸린 시간). 촬영→구동 지연과는 다릅니다.
+- 로그는 터미널과 `~/.ros/log/`에 남습니다. 정상 추적 30초 시험 동안의 로그를 `results/logs/perception/`에 보관하세요.
+
+### 5-2. 검출률·배경 오검출 (사람 대조)
+
+발제문 기준: 목표가 보이는 프레임을 **고르게 최소 30장**, 목표가 없는 프레임을 **최소 10장** 골라 사람이 대조하고 목록을 저장합니다.
+노드가 스스로 검출로 표시한 비율은 정답 대조 검출률과 다릅니다.
+
+```bash
+# 터미널 1: RealSense wrapper (2장 참고)
+# 터미널 2: 인지 노드 — 확인 화면 발행 필요
+ros2 run realsense_tracker perception_node --ros-args \
+  --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml \
+  -p camera_config:=$PWD/config/camera.yaml -p publish_debug_image:=true
+# 터미널 3 (lv2_module5 폴더, ROS 환경): 평가 프레임 저장
+python3 tools/eval_frames.py --scene visible --note "거리 40cm, 실내 조명"   # 목표를 움직이며 15초 동안 30장
+python3 tools/eval_frames.py --scene empty   --note "목표 치움"              # 목표 없이 10초 동안 10장
+```
+
+저장 결과:
+- `results/images/evaluation/<scene>_<시각>/NN_raw.png`, `NN_det.png` — 원본 / 노드 검출 결과 그림
+- `results/logs/perception/eval_<scene>_<시각>.csv` — 프레임마다 시각·노드 출력(`node_detected, ex, ey, area_ratio`)과 판정 칸
+- `results/logs/perception/eval_runs.csv` — 실행 기록 (장면·장수·기간·`/target` 수신 Hz·HSV·최소 면적·카메라·메모)
+
+판정과 집계:
+1. CSV를 열고 각 `NN_det.png`를 보며 `human_ok` 칸에 **1(노드 출력이 맞음) / 0(틀림)** 을 적습니다. 필요하면 `note`에 이유를 적습니다.
+   - visible: 목표에 외곽선·중심이 맞게 그려졌으면 1, 놓쳤거나(미검출) 다른 물체를 잡았으면 0
+   - empty: 아무것도 검출하지 않았으면 1, 무언가를 검출했으면 0 (배경 오검출)
+2. 집계:
+   ```bash
+   python3 tools/eval_score.py results/logs/perception/eval_visible_*.csv results/logs/perception/eval_empty_*.csv
+   ```
+   ```text
+   검출률 = 올바른 검출 / 판정한 프레임 × 100   (틀린 프레임은 미검출 / 다른 물체 검출로 구분해 출력)
+   배경 오검출 = 틀린 프레임 수 (검출률과 별도)
+   ```
+
+## 6. 알아둘 점
 
 - **목표는 가장 큰 덩어리 1개만 고릅니다.** 비슷한 색의 더 큰 물체(남색, 하늘색 등)가 있으면 그쪽을 목표로 잡을 수 있습니다.
   화면의 `candidates`가 2 이상이면 다른 후보가 있다는 뜻입니다.

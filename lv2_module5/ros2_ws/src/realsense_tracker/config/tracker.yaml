@@ -20,7 +20,8 @@ perception_node:
     depth_min_valid_ratio: 0.5    # 목표 영역에서 깊이가 측정된 비율이 이보다 낮으면 거리를 비움
     depth_max_spread_cm: 5.0      # 목표 영역 깊이 값의 흩어짐(p25~p75)이 이보다 크면 거리를 비움
 
-    publish_debug_image: false    # true면 /perception/debug_image 발행 (검출 결과를 그린 확인용 영상)
+    publish_debug_image: false    # true면 /perception/debug_image 발행 (검출 결과를 그린 확인용 영상, 평가 도구에 필요)
+    stats_period_sec: 5.0         # 이 간격(초)마다 처리 FPS·처리 시간을 로그로 남김 (0이면 끔)
 
     # QoS (모두 depth 1)
     target_reliable: false        # /target 발행: false = best effort (발제문 규약) → 구독 측(제어)도 best effort로 받아야 연결됨

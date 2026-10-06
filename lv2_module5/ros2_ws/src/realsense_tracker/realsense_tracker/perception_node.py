@@ -19,6 +19,8 @@
   ros2 run realsense_tracker perception_node --ros-args \\
     --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml -p camera_config:=$PWD/config/camera.yaml
 """
+import time
+
 import numpy as np
 import rclpy
 import yaml
@@ -37,6 +39,7 @@ NODE_PARAM_DEFAULTS = {
     "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)를 확인 화면·로그에 표시
     "depth_unit_m": 0.001,          # 16UC1 깊이 값 1이 몇 m인지 (RealSense 기본: 1mm)
     "publish_debug_image": False,   # true면 /perception/debug_image 발행 (rqt_image_view 등으로 확인)
+    "stats_period_sec": 5.0,        # 이 간격(초)마다 처리 FPS·처리 시간을 로그로 남김 (0이면 끔)
     # /target 발행 QoS. false = best effort, depth 1 (발제문 규약: best-effort, depth 1부터 적용)
     # ※ best effort 발행은 reliable 구독과 연결되지 않음 → 구독 측(제어)도 best effort로 받아야 함
     "target_reliable": False,
@@ -101,6 +104,9 @@ class PerceptionNode(Node):
         self.depth_unit_m = float(params["depth_unit_m"])
         self.last_found = None          # 검출 상태가 바뀔 때만 로그를 남기기 위함
         self.warned_size = False
+        # 처리 FPS 측정 (발제문: 처리 완료 프레임 수 / 실제 경과 초 — 카메라 설정 FPS와 구분)
+        self.stats_period = float(params["stats_period_sec"])
+        self.stats = {"t0": None, "n": 0, "found": 0, "proc_ms": []}
 
         # 카메라 토픽 이름: config/camera.yaml (가이드: 코드에 하드코딩하지 않음)
         cam_path = params["camera_config"]
@@ -146,6 +152,7 @@ class PerceptionNode(Node):
             f"확인 화면 발행={self.debug_pub is not None}")
 
     def on_images(self, color_msg, depth_msg=None):
+        t_start = time.perf_counter()
         try:
             frame = image_to_numpy(color_msg)
             depth, scale = None, self.depth_unit_m
@@ -176,6 +183,8 @@ class PerceptionNode(Node):
         if self.debug_pub is not None:
             self.debug_pub.publish(numpy_to_image(draw(frame, res), color_msg.header))
 
+        self.update_stats(res["found"], (time.perf_counter() - t_start) * 1000)
+
         if res["found"] != self.last_found:     # 검출 ↔ 미검출이 바뀔 때만 기록
             dist = "--" if res["dist_cm"] is None else f"{res['dist_cm']:.1f} cm"
             if res["found"]:
@@ -184,6 +193,24 @@ class PerceptionNode(Node):
             else:
                 self.get_logger().info("목표 미검출 → x = y = z = 0 발행")
             self.last_found = res["found"]
+
+    def update_stats(self, found, proc_ms):
+        """처리 완료 프레임을 세고, stats_period_sec마다 처리 FPS와 처리 시간(영상 변환~발행)을 로그로 남김"""
+        if self.stats_period <= 0:
+            return
+        s, now = self.stats, time.monotonic()
+        if s["t0"] is None:
+            s["t0"] = now
+        s["n"] += 1
+        s["found"] += int(found)
+        s["proc_ms"].append(proc_ms)
+        elapsed = now - s["t0"]
+        if elapsed >= self.stats_period:
+            self.get_logger().info(
+                f"처리 FPS {s['n'] / elapsed:.1f} (최근 {elapsed:.1f}초 동안 {s['n']}장 처리), "
+                f"처리 시간 평균 {sum(s['proc_ms']) / len(s['proc_ms']):.1f} ms·최대 {max(s['proc_ms']):.1f} ms, "
+                f"노드가 검출로 표시한 프레임 {s['found']}/{s['n']} (사람 대조 검출률과 다름)")
+            self.stats = {"t0": now, "n": 0, "found": 0, "proc_ms": []}
 
 
 def main(args=None):
