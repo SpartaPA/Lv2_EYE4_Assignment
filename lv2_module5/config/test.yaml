@@ -1,0 +1,30 @@
+# 사전 시험 조건. 실측 결과가 아니며 Kp는 장비 확인 후 시험 전에 확정한다.
+normal_tracking_sec: 30
+
+occlusion:
+  duration_sec: 2
+  trials: 5
+  recovery_success_sec: 3
+
+target_timeout_sec: 0.5
+
+recovery:
+  valid_frames_required: 3
+
+interrupt_test:
+  target_topic_stop_trials: 1
+  control_communication_stop_trials: 1
+
+kp_compare:
+  settings:
+    A:
+      kp_pan: null  # TODO
+      kp_tilt: null  # TODO
+    B:
+      kp_pan: null  # TODO
+      kp_tilt: null  # TODO
+  trials_per_setting: 3
+
+manual_evaluation:
+  visible_target_frames_min: 30
+  no_target_frames_min: 10

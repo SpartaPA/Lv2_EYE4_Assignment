@@ -1,0 +1,724 @@
+# Lv2 Module 5 — 팀 업무 네비게이터
+
+> 프로젝트 발제문의 필수 규약을 기준으로 인지·제어·통합·검증 담당자가 같은 Interface와 시험 기준을 사용하도록 정리한 문서입니다.
+>
+> 팀 확정 요구사항은 **Pan/Tilt 2축 추적 필수**입니다. 발제문의 `/target` 규약과 안전·검증 기준은 유지하되, 제어는 `ex`와 `ey`를 모두 사용하여 두 Dynamixel 축을 실제로 추적하도록 구성합니다.
+
+---
+
+# 1. 담당 파트 바로가기
+
+| 파트 | 핵심 역할 | 주요 작업 위치 |
+|---|---|---|
+| 인지 | D435 Color 기반 HSV·Contour 검출, 정규화 중심 오차·면적비·미검출 생성 | `perception_node.py` |
+| 제어 | Pan/Tilt 2축 P 추적, 축별 속도·각도 제한·데드밴드, 소실·timeout 정지와 복귀 | `control_node.py`, `firmware/opencr/` |
+| 통합 | RealSense ROS wrapper 실행·Launch 구성, ROS 2 Interface, PC↔Pi 연결, OpenCR Serial, bag 기록·재현 | `tracker.launch.py`, `opencr_node.py`, `launch/`, `config/` |
+| 검증·문서화 | 시험 조건·산식·반복 횟수 확정, 정상/가림/중단 시험, 지표 계산과 증빙 정리 | `results/`, `recordings/`, `report.md`, `presentation.md`, `team.md` |
+
+선택 확장: Depth 기반 거리 검사, 3D 역투영, SEARCHING, 필터/데드밴드 비교.
+Pan/Tilt 2축 추적은 선택이 아니라 프로젝트 필수 구현 범위로 본다.
+
+---
+
+# 2. 전체 시스템 구조
+
+```text
+영상·인지 PC
+D435 USB 3
+        │
+        ▼
+RealSense ROS 2 wrapper
+(realsense2_camera)
+        │
+        ├─ Color Image Topic
+        ├─ aligned Depth Topic
+        └─ CameraInfo Topic
+        │
+        ▼
+perception_node
+        │
+        │ /target
+        │ geometry_msgs/msg/PointStamped
+        │ x=ex, y=ey, z=area_ratio
+        ▼
+control_node
+        │
+        ├─ IDLE
+        ├─ TRACKING
+        └─ LOST
+        │
+        ├─ /tracking_status
+        └─ 모터 명령
+               │
+               │ ROS 2 DDS
+               │ PC ↔ Raspberry Pi
+               ▼
+Raspberry Pi
+opencr_node
+        │
+        │ Serial
+        ▼
+OpenCR
+        │
+        ├─ Pan Dynamixel : 좌우 필수 추적
+        └─ Tilt Dynamixel: 상하 필수 추적
+        │
+        ▼
+카메라 방향 변화
+        │
+        └────────────→ 다음 영상
+```
+
+주의:
+- SSH는 Raspberry Pi 접속·빌드·업로드·시리얼 작업 수단이며 ROS 메시지 전달 자체를 대신하지 않는다.
+- PC와 Pi 사이 `ROS_DOMAIN_ID`, RMW, DDS 통신을 확인한다.
+- 인지 담당은 RealSense wrapper가 실제 발행하는 Color/Depth/CameraInfo Topic 이름과 encoding/frame_id/stamp를 확인하고, `perception_node`가 해당 Topic을 직접 Subscribe하도록 한다.
+- 기본 추적은 Color 영상의 `ex`, `ey`를 모두 사용하여 Pan/Tilt 2축으로 목표 중심 오차를 줄인다.
+- `/target.point.z`는 Depth가 아니라 **면적비**이다.
+- Depth를 제어에 추가할 경우 기본 `/target` 규약과 섞지 않고 별도 규약을 문서화한다.
+
+---
+
+# 3. ROS 2 Node 목록
+
+| Node | 담당 | 역할 |
+|---|---|---|
+| `realsense2_camera` (외부 wrapper) | 인지 + 통합 | D435 Color/Depth/CameraInfo Topic 제공. 인지는 데이터 유효성 확인, 통합은 실행·Launch·연결 관리 |
+| `perception_node` | 인지 | HSV·Contour 검출, `ex/ey/area_ratio`, 미검출 `/target` 발행 |
+| `control_node` | 제어 | `/target` 기반 Pan/Tilt 2축 P 제어, 상태 전이, 제한·정지·복귀 |
+| `opencr_node` | 통합 + 제어 | ROS 2 제어 명령 ↔ OpenCR Serial 변환 및 통신 확인 |
+
+---
+
+# 4. 발제문 기준 Exact ROS 2 Interface
+
+## 4.1 Camera → Perception
+
+### Color Image
+
+```text
+Topic:
+실제 RealSense wrapper가 발행하는 Color Image Topic
+(`tracker.yaml`의 `color_topic`에 기록)
+
+Type:
+sensor_msgs/msg/Image
+
+Publisher:
+RealSense ROS 2 wrapper (`realsense2_camera`)
+
+Subscriber:
+perception_node
+```
+
+Topic 이름은 wrapper/namespace 설정에 따라 달라질 수 있으므로 코드에 하드코딩하지 않는다.
+
+### Depth Image
+
+```text
+Topic:
+실제 RealSense wrapper가 발행하는 aligned Depth Topic을 사용
+(예시 이름을 문서에 하드코딩하지 않고 `ros2 topic list` 결과로 확정)
+
+Type:
+sensor_msgs/msg/Image
+
+용도:
+정렬 Depth 유효 거리 확인·기록
+기본 Pan/Tilt 중심오차 추적의 직접 제어값으로 사용하지 않음
+```
+
+CameraInfo, encoding, frame_id, stamp, 실제 Color/Depth 프로파일, SDK/wrapper 버전을 함께 기록한다.
+
+RealSense wrapper 실행 후 실제 Topic을 먼저 확인한다.
+
+```bash
+ros2 topic list | grep camera
+ros2 topic list | grep color
+ros2 topic list | grep depth
+ros2 topic list | grep camera_info
+```
+
+통합 담당은 wrapper 실행과 Launch 구성을 맡고, 인지 담당은 실제 Color/Depth/CameraInfo 데이터가 perception에서 사용할 수 있는 상태인지 확인한다. 별도 전처리·재발행 이유가 없다면 `camera_node.py`는 만들지 않는다.
+
+---
+
+# 5. Perception → Control
+
+발제문의 기본 Interface를 그대로 사용한다.
+
+```text
+Topic:
+/target
+
+Type:
+geometry_msgs/msg/PointStamped
+
+Publisher:
+perception_node
+
+Subscriber:
+control_node
+```
+
+필드 의미:
+
+```text
+point.x = ex = (cx - W/2) / (W/2)
+point.y = ey = (cy - H/2) / (H/2)
+point.z = area_ratio = contour_area / (W × H)
+```
+
+부호:
+
+```text
+ex > 0 : 목표가 화면 오른쪽
+ex < 0 : 목표가 화면 왼쪽
+ey > 0 : 목표가 화면 아래쪽
+ey < 0 : 목표가 화면 위쪽
+```
+
+미검출:
+
+```text
+point.z = 0
+```
+
+이때 `point.x`, `point.y`로 제어하지 않는다.
+
+중요:
+- `PointStamped`는 일반적인 3D 위치가 아니라 이 과제의 목표 전달 규약이다.
+- `point.z`에 Depth를 넣지 않는다.
+- `header.stamp`는 원본 영상 시각을 유지한다.
+- 촬영 시각을 알 수 없으면 영상 수신 시각임을 문서화한다.
+- 영상 처리마다 `/target`을 발행한다.
+- 정상 영상의 미검출도 `/target`을 생략하지 않고 `z=0`으로 발행한다.
+- 카메라가 멈춘 경우 이전 영상에 새 timestamp를 붙여 정상 입력처럼 보내지 않는다.
+
+QoS 기본:
+
+```text
+Reliability: best-effort
+Depth: 1
+```
+
+구독 측 호환성을 실제로 확인한다.
+
+
+---
+
+# 6. Tracking Status
+
+팀 상태 Topic은 다음으로 통일한다.
+
+```text
+Topic:
+/tracking_status
+
+Type:
+std_msgs/msg/String
+
+Publisher:
+control_node
+```
+
+상태:
+
+```text
+IDLE
+TRACKING
+LOST
+```
+
+| 상태 | 조건 | 동작 |
+|---|---|---|
+| `IDLE` | 시작 전 또는 명시적 중지 | 새 추적 명령을 내보내지 않음 |
+| `TRACKING` | 신선한 입력에서 `z>0` | 제한 범위 안에서 추적 |
+| `LOST` | `z=0` 또는 입력 timeout | 검증된 정지 명령, 이전 속도 유지 금지 |
+| `TRACKING` 복귀 | 신선한 목표 3프레임 연속 검출 | 제한된 명령으로 추적 재개 |
+
+미검출 첫 프레임부터 모터는 정지시킨다.
+
+---
+
+# 7. Control → OpenCR
+
+발제문은 모터 명령 Topic/Message를 고정하지 않고 위치/속도 방식·단위·부호·주기·정지 명령을 팀이 명시하도록 요구한다.
+
+## 기본 필수 제어
+
+```text
+제어 모드: Velocity Mode
+필수 축: Pan 수평 + Tilt 상하 2축
+입력: ex = /target.point.x
+```
+
+개념식:
+
+```text
+pan_command  = clamp(pan_direction × Kp_pan × ex,
+                     -pan_speed_limit,
+                     +pan_speed_limit)
+
+tilt_command = clamp(tilt_direction × Kp_tilt × ey,
+                     -tilt_speed_limit,
+                     +tilt_speed_limit)
+```
+
+추가 적용:
+- 중심 deadband
+- Pan 회전 범위
+- 속도 상한
+- 위치 적분을 한다면 실제 경과시간 `dt`
+
+## 팀 구현용 모터 명령 Topic
+
+```text
+Topic:
+/control/pan_tilt_cmd
+
+Type:
+realsense_tracker_interfaces/msg/PanTiltCommand
+
+Publisher:
+control_node
+
+Subscriber:
+opencr_node
+```
+
+`PanTiltCommand.msg`:
+
+```text
+std_msgs/Header header
+bool stop
+float32 pan_velocity_rad_s
+float32 tilt_velocity_rad_s
+```
+
+사용 규칙:
+- `pan_velocity_rad_s`: 좌우 Pan 필수 제어 명령
+- `tilt_velocity_rad_s`: 상하 Tilt 필수 제어 명령
+- ROS 2 내부 단위: `rad/s`
+- 실제 OpenCR/Dynamixel 단위 변환 위치를 문서화
+- 실제 모터 정/역 방향은 `direction = +1/-1` 설정으로 관리
+- 정지 시 `stop=true`, Pan/Tilt 두 축 속도 모두 `0.0`
+
+이 Custom Message는 발제문 필수가 아니라 **팀이 선택한 모터 명령 Interface**이다. 실제 구현이 다르면 코드·Interface 표·README·검증 명령을 함께 바꾼다.
+
+---
+
+# 8. 안전 정지와 timeout
+
+## 8.1 미검출
+
+```text
+/target.point.z == 0
+→ LOST
+→ 즉시 정지
+```
+
+## 8.2 인지 입력 중단
+
+기본 timeout:
+
+```text
+마지막 신선한 /target 수신 후 0.5초
+```
+
+```text
+/target 발행 중단
+→ 0.5초 timeout
+→ LOST
+→ 정지
+```
+
+0.5초를 변경하면 이유와 실제 값을 config/report에 기록한다.
+
+## 8.3 제어 통신 중단
+
+```text
+제어 프로그램/통신 중단
+→ OpenCR 또는 모터 측 timeout
+→ 마지막 속도 유지 금지
+→ Pan 정지
+→ Tilt도 함께 정지
+```
+
+board-side timeout 값은 실제 구현값을 config/report에 기록하고 시험한다.
+
+## 8.4 복구
+
+```text
+LOST
+→ 신선한 목표 3프레임 연속 z>0
+→ TRACKING
+```
+
+기본 복구는 현재 시야 안에 재등장한 목표를 다시 검출하여 추적 재개하는 것이다.
+시야 밖 SEARCHING은 선택 심화다.
+
+---
+
+# 9. Interface Table
+
+| 방향 | Topic | Message Type | 핵심 의미 | 비고 |
+|---|---|---|---|---|
+| Camera → Perception | `color_topic` (실제 wrapper Topic) | `sensor_msgs/msg/Image` | HSV·Contour 입력 | 실제 Topic을 config에 기록 |
+| Camera → Perception | `aligned_depth_topic` (실제 wrapper Topic) | `sensor_msgs/msg/Image` | 정렬 Depth 유효성 확인 | 실제 Topic을 config에 기록 |
+| Perception → Control | `/target` | `geometry_msgs/msg/PointStamped` | x=ex, y=ey, z=area_ratio | 발제문 필수 규약 |
+| Control → 전체 | `/tracking_status` | `std_msgs/msg/String` | IDLE/TRACKING/LOST | 팀 확정 |
+| Control → OpenCR | `/control/pan_tilt_cmd` | `realsense_tracker_interfaces/msg/PanTiltCommand` | Pan/Tilt 2축 속도, stop | 팀 구현 규약 |
+
+---
+
+# 10. 문제 2 모의 입력 검증
+
+실제 모터 출력은 끈 상태에서 **발제문 기본 5개 입력 + 2축 확장 2개 입력**을 확인한다.
+
+| 입력 | 기대 결과 |
+|---|---|
+| `x=0, y=0, z>0` | 중심에서 Pan/Tilt 모두 불필요한 회전 없음 |
+| `x=+0.4, y=0, z>0` | Pan이 오른쪽 오차를 줄이는 방향 명령 |
+| `x=-0.4, y=0, z>0` | Pan이 반대 방향 명령 |
+| `x=0, y=+0.4, z>0` | Tilt가 아래쪽 오차를 줄이는 방향 명령 |
+| `x=0, y=-0.4, z>0` | Tilt가 반대 방향 명령 |
+| `z=0` | 이전 목표를 계속 쫓지 않고 Pan/Tilt 모두 정지 |
+| `/target` 발행 중단 | 0.5초 timeout 후 Pan/Tilt 모두 정지 |
+
+기록:
+`입력값 / 상태 / 출력명령 / 단위 / 정지여부 / timestamp`
+
+---
+
+# 11. 역할별 작업
+
+## 인지
+
+```text
+D435 Color
+→ HSV
+→ Mask
+→ Noise 제거
+→ Contour
+→ 대상 선택
+→ 중심
+→ ex / ey
+→ area_ratio
+→ /target
+```
+
+필수:
+- HSV 범위·최소 면적·해상도 config 분리
+- 정상 / 대상 없음 / 일부 가림을 같은 설정으로 확인
+- 원본·마스크·검출 이미지 저장
+- 미검출 때 이전 좌표 재사용 금지
+
+## 제어
+
+```text
+/target
+→ freshness / z 확인
+→ 상태 전이
+→ Pan/Tilt P 제어
+→ deadband
+→ speed limit
+→ angle limit
+→ motor command
+```
+
+필수:
+- 실제 모터 ID, baud, 방향 확인
+- 작은 명령으로 방향 확인
+- 실제 영상 오차가 줄어드는 방향인지 검증
+- Kp 비교는 **설정 A / 설정 B 두 세트**로 고정
+  - 설정 A: `Kp_pan_A`, `Kp_tilt_A`
+  - 설정 B: `Kp_pan_B`, `Kp_tilt_B`
+- 각 설정 세트 최소 3회, 총 6회
+- 모터 위치를 측정하지 않았다면 명령을 실제 위치처럼 표시하지 않음
+
+## 통합
+
+필수:
+- PC와 Pi ROS 2 DDS 통신 확인
+- SSH로 Pi 접속 후 OpenCR 빌드·업로드·시리얼 확인
+- Topic·Message·QoS·실행 순서·config 통일
+- Launch 구성
+- 성공/소실 bag 기록
+- 다른 팀원의 모터 비활성 재현 지원
+
+## 검증·문서화
+
+필수:
+- 시험 전에 조건·산식·반복 횟수 확정
+- 정상 30초 이상
+- 2초 가림 후 재등장 5회
+- 인지 입력 중단 1회 이상
+- 제어 통신 중단 1회 이상
+- Kp 2종 × 각 3회
+- 실패 회차 포함
+- 원본 CSV·상태로그·평가 프레임·그래프 보존
+
+
+---
+
+# 12. 검증 명령
+
+```bash
+ros2 node list
+ros2 topic list
+
+ros2 topic type /target
+ros2 topic info /target
+ros2 topic echo /target
+
+ros2 topic type /tracking_status
+ros2 topic echo /tracking_status
+
+ros2 topic type /control/pan_tilt_cmd
+ros2 topic echo /control/pan_tilt_cmd
+```
+
+확인:
+- `/target` Type이 `geometry_msgs/msg/PointStamped`
+- x/y/z 의미 일치
+- `z=0`에서 정지
+- `/target` 침묵 시 0.5초 후 정지
+- 상태가 IDLE/TRACKING/LOST로 전이
+- Control 통신 중단 시 OpenCR/모터 측 정지
+
+---
+
+# 13. 필수 시험
+
+## 시험 1 — 정상 추적
+
+```text
+동일 조건에서 30초 이상
+Pan/Tilt 2축
+```
+
+기록:
+- 처리 FPS
+- 검출률
+- 중심 오차
+- 유효 추적 비율
+- 상태/명령 로그
+
+## 시험 2 — 가림 후 재등장
+
+```text
+약 2초 가림
+→ 현재 시야 안에 재등장
+→ 총 5회
+```
+
+복구 성공 판정:
+
+```text
+재등장 후 3초 이내 TRACKING 복귀
+```
+
+## 시험 3 — 인지 입력 중단
+
+```text
+/target 발행 중단 1회 이상
+→ 0.5초 timeout
+→ 정지
+```
+
+## 시험 4 — 제어 통신 중단
+
+```text
+control_node 종료 또는 제어 경로 중단 1회 이상
+→ OpenCR/모터 timeout
+→ 정지
+```
+
+실제 회전 전에 움직일 수 없는 상태에서 끊김 처리를 먼저 검증한다.
+
+## 시험 5 — Kp 비교
+
+권장:
+
+```text
+왼쪽 3초
+→ 중앙 3초
+→ 오른쪽 3초
+→ 중앙 3초
+```
+
+Kp는 축별 값을 따로 무작정 조합하지 않고, 사전에 정한 **2개의 Pan/Tilt Kp 설정 세트(A/B)**를 같은 조건에서 각 3회 이상 반복한다.
+
+---
+
+# 14. 성능 지표
+
+| 지표 | 기준 |
+|---|---|
+| 처리 FPS | 처리 완료 프레임 수 / 실제 경과 초 |
+| 검출률 | 올바른 검출 / 실제 목표가 보이는 평가 프레임 ×100 |
+| 배경 오검출 | 목표 없는 평가 프레임의 잘못된 검출 수 |
+| 수평 RMSE | `sqrt(mean(ex²))`, 검출·TRACKING 구간 |
+| 수직 RMSE | `sqrt(mean(ey²))`, 검출·TRACKING 구간 |
+| 복구 성공률 | 재등장 후 3초 이내 TRACKING 복귀 횟수 / 5 ×100 |
+| 복구 시간 | TRACKING 복귀 시각 − 목표 재등장 시각 |
+| 유효 추적 비율 | 시험 전 분모·포함 구간을 정의하고 동일 적용 |
+
+검출률: 목표가 보이는 평가 프레임 최소 30개를 사람이 직접 대조.
+배경 오검출: 목표 없는 평가 프레임 최소 10개를 사람이 직접 대조.
+실패는 0초로 바꾸지 않고 실패로 기록한다.
+
+---
+
+# 15. CSV / 로그 권장 컬럼
+
+```text
+run_id
+time_s
+frame_id
+detected
+ex
+ey
+area_ratio
+state
+command
+command_unit
+```
+
+실제 모터 위치를 측정한 경우에만 위치 데이터를 추가하며 명령값과 실측값을 구분한다.
+
+---
+
+# 16. bag 기록·재현
+
+대표 성공 장면과 소실·복귀 장면을 각각 10~30초 기록한다.
+
+bag 최소 기록:
+- 영상 Topic
+- `/target`
+- `/tracking_status`
+- 모터 명령 Topic
+
+시리얼 로그는 같은 실행 ID로 연결한다.
+
+반드시 남길 정보:
+- 토픽
+- 메시지 수
+- 기간
+- 해상도
+- 설정
+- 기준 커밋
+- metadata 및 데이터 파일
+- 파일명·크기·해시
+- 다운로드/재생 방법
+
+재현 시 실제 모터 출력은 비활성화한다.
+
+입력 재처리:
+
+```text
+bag 영상 → 검출기
+→ /target_replay 등 별도 Topic
+```
+
+결과 재분석:
+
+```text
+저장된 target/status/command
+→ 지표 재계산
+```
+
+저장 `/target`과 새 검출 결과를 같은 Topic에 섞지 않는다.
+시간 기준이 필요하면 `--clock`과 `use_sim_time`을 함께 적용한다.
+
+---
+
+# 17. 결과 저장
+
+```text
+results/
+├── images/
+├── logs/
+├── plots/
+└── metrics.csv
+
+recordings/
+└── README.md
+```
+
+필수 증빙:
+- 세 장면 검출 증빙
+- 정상 30초
+- 가림 5회
+- 인지 입력 중단
+- 제어 통신 중단
+- Kp 총 6회
+- 평가 프레임 30개 / 배경 10개
+- 지표 원본 CSV
+- 그래프
+- 실패 결과
+
+---
+
+# 18. Interface 변경 규칙
+
+발제문의 `/target` 규약은 임의 변경하지 않는다.
+
+```text
+/target
+geometry_msgs/msg/PointStamped
+x = ex
+y = ey
+z = area_ratio
+z = 0 → 미검출
+```
+
+팀 정의 Interface 변경:
+
+```text
+변경 제안
+→ 인지 + 제어 + 통합 협의
+→ 검증 영향 확인
+→ 문서 수정
+→ 코드 수정
+→ 모의 입력 재검증
+→ 통합 시험
+```
+
+---
+
+# 19. Phase별 작업
+
+| Phase | 작업 | 주 담당 |
+|---|---|---|
+| 1 | 대상·시험 조건·역할·Issue 확정 | 팀장 + 전체 |
+| 2 | HSV·Contour + `/target` | 인지 + 통합 |
+| 3 | 모터 방향·P 제어·속도/각도/데드밴드 | 제어 |
+| 4 | PC↔Pi↔OpenCR 전체 연결 | 통합 + 제어 |
+| 5 | 정상·소실·복구·중단 안전 시험 | 검증 + 전체 |
+| 6 | 지표·CSV·그래프 계산 | 검증 |
+| 7 | bag 기록·모터 비활성 재현 | 통합 + 검증 |
+| 8 | report/team/presentation 및 제출 | 전체 |
+
+---
+
+# 20. 한 줄 네비게이터
+
+```text
+인지
+D435 Color → HSV/Contour → ex/ey/area_ratio → /target(PointStamped)
+
+제어
+/target → IDLE/TRACKING/LOST → Pan/Tilt 2축 P 제어 → 제한/정지 → 모터 명령
+
+통합
+PC Camera/Perception/Control → ROS 2 DDS → Pi opencr_node → Serial → OpenCR
+
+검증
+7개 모의 입력(발제 5 + 2축 2) → 정상 30초 → 가림 5회 → /target 중단 → Control 통신 중단
+→ Kp 2종×3회 → 30/10프레임 정답 대조 → 지표 → bag 재현 → 문서 증빙
+
+선택 확장
+Depth 거리검사 / SEARCHING 등은 필수 Pan/Tilt 2축 결과와 별도로 기록
+```
