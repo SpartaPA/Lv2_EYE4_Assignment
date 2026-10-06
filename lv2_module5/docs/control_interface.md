@@ -348,8 +348,9 @@ Tilt 토크 해제 시 카메라가 내려가므로 토크 해제 전에 기계�
 
 `realsense_tracker`의 control_node 및 opencr_node를 구현 후보로 추가했다.
 control_node는 영상 오차에 모터 방향을 한 번 적용한다(Pan -1, Tilt +1).
-opencr_node는 현재 dry_run=true 전용이며 시리얼 포트를 열지 않는다.
-dry_run=false이면 시작을 거부한다. 시리얼 변환·ARM·피드백 처리는 아직 미구현이다.
+기본 serial_mode=false에서는 dry sink로 동작하며 포트를 열지 않는다.
+serial_mode=true, dry_run=true에서는 시리얼 port를 열되 MODE=DRY firmware만 허용한다.
+dry_run=false 또는 expected_board_mode=LIVE는 시작을 거부한다. LIVE bridge는 미구현이다.
 `/opencr/dry_status`의 String(JSON)은 모의 명령 처리 상태이며 모터 피드백이 아니다.
 ROS parameter 설정은 패키지의 `config/control_dry.yaml`을 사용한다.
 기존 `lv2_module5/config/opencr.yaml`은 plain host 계약이며 자동 로드하지 않는다.
@@ -359,3 +360,13 @@ dry bridge 명령 신선도/수신 타임아웃은 0.15초다.
 이는 A/B 게인 실험 완료나 실제 추적용 승인 설정을 의미하지 않는다.
 독립 workspace 모의 시험 통과와 본 repository 시험 통과를 구분한다.
 검증 절차: [ROS dry 통합 시험](ros_control_dry_steps.md).
+
+## DRY board 시리얼 bridge 후보
+
+가상 시리얼 및 실제 DRY firmware용 bridge를 추가했다. 확인 절차:
+[시리얼 bridge 시험](serial_bridge_steps.md).
+/opencr/prepare, /opencr/arm, /opencr/disarm은 Trigger service다.
+응답 success는 요청 수락이며 이후 /opencr/bridge_status 상태로 완료를 확인한다.
+정상 표적 소실은 STOP으로 ARM을 유지하며 신선한 명령만 타이머를 갱신한다.
+제어 통신 중단/board timeout/FAULT는 자동 재ARM하지 않는다.
+원래 MODE=LIVE firmware와 실제 모터 시험은 본 후보 범위 밖이다.

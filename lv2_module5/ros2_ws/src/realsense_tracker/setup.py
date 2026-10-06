@@ -11,4 +11,6 @@ setup(name='realsense_tracker', version='0.1.0', packages=find_packages(exclude=
  entry_points={'console_scripts':[
  'control_node = realsense_tracker.control_node:main',
  'opencr_node = realsense_tracker.opencr_node:main',
- 'test_control_dry = realsense_tracker.test_control_dry:main']})
+ 'test_control_dry = realsense_tracker.test_control_dry:main',
+ 'test_serial_pty = realsense_tracker.test_serial_pty:main',
+ 'test_serial_ros = realsense_tracker.test_serial_ros:main']})

@@ -1,0 +1,9 @@
+# Serial validation ONLY, requires MODE=DRY firmware.
+opencr_node:
+  ros__parameters:
+    dry_run: true
+    serial_mode: true
+    expected_board_mode: DRY
+    port: ""  # Explicit PTY or board port required.
+    usb_serial_baudrate: 115200
+    csv_path: ""
