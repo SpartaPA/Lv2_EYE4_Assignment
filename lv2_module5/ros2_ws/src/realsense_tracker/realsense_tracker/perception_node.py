@@ -6,6 +6,7 @@
   (camera_info_topic은 이 노드에서 쓰지 않음 — 확인·기록용)
 발행
   /target                   geometry_msgs/PointStamped  (발제문 지정 — 이름·형식 임의 변경 금지)
+      QoS: best effort, depth 1 (발제문 규약) → 구독 측도 best effort로 받아야 연결됨
       point.x = ex  화면 중심 기준 가로 어긋남 (−1 ~ +1, 오른쪽이 +)
       point.y = ey  화면 중심 기준 세로 어긋남 (−1 ~ +1, 아래쪽이 +)
       point.z = z   목표 넓이 ÷ 화면 넓이 (검출되면 항상 0보다 큼)
@@ -25,7 +26,7 @@ from geometry_msgs.msg import PointStamped
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 
 from .detector import PARAM_DEFAULTS, cfg_from_params, detect, draw
@@ -36,9 +37,12 @@ NODE_PARAM_DEFAULTS = {
     "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)를 확인 화면·로그에 표시
     "depth_unit_m": 0.001,          # 16UC1 깊이 값 1이 몇 m인지 (RealSense 기본: 1mm)
     "publish_debug_image": False,   # true면 /perception/debug_image 발행 (rqt_image_view 등으로 확인)
-    # 영상 구독 방식. true = reliable (전달 보장), false = best effort (센서용, 손실 허용)
-    # 실측(노트북, Fast DDS 기본 설정): 640x480 영상은 다른 프로세스에서 받을 때 reliable일 때만 전달됨
-    # ※ RealSense wrapper의 발행 방식과 맞아야 함 (reliable 구독 + best effort 발행 → 연결 안 됨)
+    # /target 발행 QoS. false = best effort, depth 1 (발제문 규약: best-effort, depth 1부터 적용)
+    # ※ best effort 발행은 reliable 구독과 연결되지 않음 → 구독 측(제어)도 best effort로 받아야 함
+    "target_reliable": False,
+    # 영상 구독 QoS (depth 1). true = reliable, false = best effort
+    # 실측(2026-10-06, RealSense wrapper 640x480 30fps, Fast DDS 기본 설정, 다른 프로세스에서 구독):
+    #   best effort → 컬러 1.2 fps, 정렬 깊이 0 fps / reliable → 둘 다 29.4 fps  → reliable 사용
     "image_reliable": True,
 }
 CAMERA_TOPIC_KEYS = ("color_topic", "aligned_depth_topic", "camera_info_topic")
@@ -113,27 +117,32 @@ class PerceptionNode(Node):
             raise ConfigError(f"{cam_path}의 {', '.join(missing)} 값이 비어 있음 → RealSense wrapper 실행 후 "
                               "`ros2 topic list`로 실제 이름을 확인해 기록하세요")
 
-        self.pub = self.create_publisher(PointStamped, "/target", 10)
+        def qos(reliable):  # depth 1 = 가장 최근 메시지만 유지 (밀린 메시지를 쌓아 두지 않음)
+            return QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE if reliable
+                              else ReliabilityPolicy.BEST_EFFORT)
+
+        self.pub = self.create_publisher(PointStamped, "/target", qos(params["target_reliable"]))
         self.debug_pub = (self.create_publisher(Image, "/perception/debug_image", 1)
                           if params["publish_debug_image"] else None)
 
-        # 영상 구독 QoS: 최신 영상만 처리하도록 큐는 짧게 (reliable이어도 밀린 영상을 쌓아 두지 않음)
-        qos = (QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
-               if params["image_reliable"] else qos_profile_sensor_data)
+        # 영상 구독
+        image_qos = qos(params["image_reliable"])
         if self.use_depth:
-            color = Subscriber(self, Image, topics["color_topic"], qos_profile=qos)
-            depth = Subscriber(self, Image, topics["aligned_depth_topic"], qos_profile=qos)
+            color = Subscriber(self, Image, topics["color_topic"], qos_profile=image_qos)
+            depth = Subscriber(self, Image, topics["aligned_depth_topic"], qos_profile=image_qos)
             self.sync = ApproximateTimeSynchronizer([color, depth], queue_size=10, slop=0.05)  # 시각 차 50ms 이내끼리 묶음
             self.sync.registerCallback(self.on_images)
         else:
-            self.create_subscription(Image, topics["color_topic"], self.on_images, qos)
+            self.create_subscription(Image, topics["color_topic"], self.on_images, image_qos)
 
+        name = lambda reliable: "reliable" if reliable else "best effort"
         r = self.cfg["hsv"]["ranges"][0]
         self.get_logger().info(
             f"인지 노드 시작: 컬러 {topics['color_topic']}"
             + (f", 깊이 {topics['aligned_depth_topic']}" if self.use_depth else "")
             + f", HSV {r['lower']}~{r['upper']}, min_area_ratio={self.cfg['min_area_ratio']}, "
-            f"영상 구독={'reliable' if params['image_reliable'] else 'best effort'}, "
+            f"/target 발행={name(params['target_reliable'])}·depth 1, "
+            f"영상 구독={name(params['image_reliable'])}·depth 1, "
             f"확인 화면 발행={self.debug_pub is not None}")
 
     def on_images(self, color_msg, depth_msg=None):

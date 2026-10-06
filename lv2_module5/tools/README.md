@@ -74,12 +74,23 @@ ros2 run realsense_tracker perception_node --ros-args \
 - 필요한 패키지: `rclpy`, `sensor_msgs`, `geometry_msgs`, `message_filters`, `python3-numpy`, `python3-opencv`, `python3-yaml`
   (`cv_bridge`는 쓰지 않고 영상을 직접 변환)
 
-### 영상 구독 방식 (`image_reliable`)
+### QoS (`target_reliable`, `image_reliable`, 모두 depth 1)
 
-- 기본값 `true` (reliable). 노트북(Fast DDS 기본 설정)에서 실측한 결과, **640×480 영상은 다른 프로세스에서 받을 때
-  reliable 구독일 때만 전달**되고 best effort 구독으로는 한 장도 전달되지 않았습니다.
-- RealSense wrapper의 발행 방식과 맞아야 합니다. **reliable 구독 + best effort 발행은 연결되지 않습니다.**
-  wrapper가 best effort로 발행한다면 `image_reliable: false`로 바꾸세요. (`ros2 topic info -v <컬러 토픽>`의 Reliability로 확인)
+| 대상 | 설정 | 근거 |
+|---|---|---|
+| `/target` 발행 | **best effort, depth 1** (`target_reliable: false`) | 발제문 규약 "best-effort, depth 1부터 적용" |
+| 영상 구독 (컬러·정렬 깊이) | **reliable, depth 1** (`image_reliable: true`) | 아래 실측 — best effort로는 영상이 거의 전달되지 않음 |
+
+영상 구독 실측 (2026-10-06, RealSense wrapper 640×480 30fps, wrapper 발행 QoS RELIABLE·KEEP_LAST 1, Fast DDS 기본 설정, 다른 프로세스에서 6초 구독):
+
+| 구독 QoS | 컬러 | 정렬 깊이 |
+|---|---|---|
+| best effort | 1.2 fps | 0 fps |
+| reliable | 29.4 fps | 29.4 fps |
+
+- **best effort 발행은 reliable 구독과 연결되지 않습니다.** `/target`을 받는 쪽(제어 노드 등)은 best effort로 구독해야 합니다.
+  (`ros2 topic echo`와 `ros2 bag record`는 발행 쪽 QoS에 맞춰 자동으로 받음)
+- 확인 방법: `ros2 topic info -v /target`의 Reliability
 
 ### 파라미터 (`tracker.yaml`의 `perception_node`)
 
@@ -93,7 +104,8 @@ ros2 run realsense_tracker perception_node --ros-args \
 | `depth_unit_m` | 0.001 | 16UC1 깊이 값 1의 길이(m) |
 | `depth_min_valid_ratio`, `depth_max_spread_cm` | 0.5, 5.0 | 이 기준을 못 넘으면 거리를 믿을 수 없다고 보고 비움 |
 | `publish_debug_image` | false | 확인 화면 발행 |
-| `image_reliable` | true | 영상 구독 방식 (위 설명) |
+| `target_reliable` | false | `/target` 발행 QoS (false = best effort, 위 설명) |
+| `image_reliable` | true | 영상 구독 QoS (true = reliable, 위 설명) |
 
 ## 4. 도구 (노트북, ROS 없이 RealSense 직접 사용)
 

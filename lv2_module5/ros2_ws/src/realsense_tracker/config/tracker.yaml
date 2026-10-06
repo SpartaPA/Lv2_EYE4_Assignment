@@ -21,5 +21,9 @@ perception_node:
     depth_max_spread_cm: 5.0      # 목표 영역 깊이 값의 흩어짐(p25~p75)이 이보다 크면 거리를 비움
 
     publish_debug_image: false    # true면 /perception/debug_image 발행 (검출 결과를 그린 확인용 영상)
-    image_reliable: true          # 영상 구독 방식 true=reliable / false=best effort — RealSense wrapper 발행 방식과 맞춰야 함
-                                  # (노트북 실측: 640x480 영상은 reliable일 때만 다른 프로세스로 전달됨)
+
+    # QoS (모두 depth 1)
+    target_reliable: false        # /target 발행: false = best effort (발제문 규약) → 구독 측(제어)도 best effort로 받아야 연결됨
+    image_reliable: true          # 영상 구독: true = reliable
+                                  # 실측(2026-10-06, wrapper 640x480 30fps): best effort 구독 → 컬러 1.2 fps·정렬 깊이 0 fps,
+                                  # reliable 구독 → 둘 다 29.4 fps (wrapper 발행 QoS: RELIABLE, KEEP_LAST 1)
