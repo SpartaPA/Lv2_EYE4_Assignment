@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- 초안: 인지 담당(김상화)이 perception_node에 필요한 의존성만 작성 — 통합 담당 검토 필요 -->
+<package format="3">
+  <name>realsense_tracker</name>
+  <version>0.0.1</version>
+  <description>EYE4 RealSense 기반 파란색 퍽 추적 패키지</description>
+  <maintainer email="hwa04866@gmail.com">EYE4</maintainer>
+  <license>TODO</license>
+
+  <!-- perception_node -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>message_filters</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
