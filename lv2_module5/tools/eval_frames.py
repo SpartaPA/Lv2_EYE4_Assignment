@@ -20,6 +20,7 @@ import cv2
 import rclpy
 from geometry_msgs.msg import PointStamped
 from message_filters import Subscriber, TimeSynchronizer
+from rclpy.executors import ExternalShutdownException
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 
@@ -87,15 +88,18 @@ def main():
     sync.registerCallback(on_frame)
     print(f"[{run_id}] {duration:.0f}초 동안 {n_frames}장을 고르게 저장합니다 ({interval:.2f}초 간격)")
     t_wait = time.monotonic()
-    while rclpy.ok() and len(rows) < n_frames:
-        rclpy.spin_once(node, timeout_sec=0.05)
-        if st["start"] is None and time.monotonic() - t_wait > 10:
-            print("10초 동안 영상을 받지 못함 → RealSense wrapper와 perception_node(publish_debug_image:=true)가 "
-                  "실행 중인지 확인하세요")
-            break
-        if st["start"] is not None and time.monotonic() - st["start"] > duration + 10:
-            print("시간 초과 — 저장한 프레임까지만 기록합니다")
-            break
+    try:
+        while rclpy.ok() and len(rows) < n_frames:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            if st["start"] is None and time.monotonic() - t_wait > 10:
+                print("10초 동안 영상을 받지 못함 → RealSense wrapper와 perception_node(publish_debug_image:=true)가 "
+                      "실행 중인지 확인하세요")
+                break
+            if st["start"] is not None and time.monotonic() - st["start"] > duration + 10:
+                print("시간 초과 — 저장한 프레임까지만 기록합니다")
+                break
+    except (KeyboardInterrupt, ExternalShutdownException):  # Ctrl+C로 중간에 끄면 저장한 프레임까지만 기록
+        print("\n중단됨 — 저장한 프레임까지만 기록합니다")
     elapsed = time.monotonic() - st["start"] if st["start"] else 0.0
     target_rate = (count["target"] - st["count0"]) / elapsed if elapsed > 0 else 0.0
     node.destroy_node()

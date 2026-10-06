@@ -25,6 +25,8 @@ from common import (PARAMS_PATH, RESULTS, RealSenseCamera, RosCamera, cfg_from_p
 OUT_IMG = str(RESULTS / "images" / "detection")
 OUT_LOG = str(RESULTS / "logs" / "perception" / "log.csv")
 SCENES = {"n": "normal", "e": "empty", "o": "occluded"}
+# 창 제목은 영문으로 (시스템 OpenCV 4.6(Qt)에서는 한글 제목이 ??로 깨짐)
+WIN = "capture (n: normal, e: empty, o: occluded, q: quit)"
 
 
 def save(frame, res, scene, cfg):
@@ -65,30 +67,41 @@ def main():
     cfg = cfg_from_params(load_params(args.params))
     cam = (RosCamera if args.source == "ros" else RealSenseCamera)(load_camera())
     print(f"입력: {'RealSense ROS wrapper 토픽' if args.source == 'ros' else 'RealSense 직접 (pyrealsense2)'}")
+    if not args.headless:
+        # 창을 먼저 만들어 둠 — 시스템 OpenCV 4.6(Qt)은 imshow로 바로 띄우면 창이 작게 뜨고 영상이 검게 나옴
+        cv2.namedWindow(WIN, cv2.WINDOW_AUTOSIZE | cv2.WINDOW_GUI_NORMAL)
 
-    while True:
-        if args.headless:
-            key = input("n/e/o 저장, q 종료 > ").strip()[:1]
-            cam.flush()                 # 입력을 기다리는 동안 쌓인 오래된 프레임 버리기
-        ok, frame, depth = cam.read()
-        if not ok:
-            print("카메라 프레임을 못 읽음")
+    try:
+        while True:
+            if args.headless:
+                key = input("n/e/o 저장, q 종료 > ").strip()[:1]
+                cam.flush()                 # 입력을 기다리는 동안 쌓인 오래된 프레임 버리기
+            ok, frame, depth = cam.read()
+            if not ok:
+                print("카메라 프레임을 못 읽음")
+                sys.exit(1)
+            res = detect(frame, cfg, depth, cam.depth_scale)
+
+            if not args.headless:
+                mask_bgr = cv2.cvtColor(res["mask"], cv2.COLOR_GRAY2BGR)
+                cv2.imshow(WIN, cv2.hconcat([draw(frame, res), mask_bgr]))
+                key = chr(cv2.waitKey(1) & 0xFF)
+
+            if key in SCENES:
+                save(frame, res, SCENES[key], cfg)
+            elif key == "q":
+                break
+    except (KeyboardInterrupt, EOFError):  # Ctrl+C·Ctrl+D는 정상 종료로 처리
+        pass
+    except Exception as e:
+        if type(e).__name__ != "ExternalShutdownException":  # ROS 입력일 때 Ctrl+C·종료 신호로 생기는 예외
+            raise
+    finally:
+        try:
             cam.release()
-            sys.exit(1)
-        res = detect(frame, cfg, depth, cam.depth_scale)
-
-        if not args.headless:
-            mask_bgr = cv2.cvtColor(res["mask"], cv2.COLOR_GRAY2BGR)
-            cv2.imshow("capture (n/e/o 저장, q 종료)", cv2.hconcat([draw(frame, res), mask_bgr]))
-            key = chr(cv2.waitKey(1) & 0xFF)
-
-        if key in SCENES:
-            save(frame, res, SCENES[key], cfg)
-        elif key == "q":
-            break
-
-    cam.release()
-    cv2.destroyAllWindows()
+        except Exception:  # 종료 신호로 ROS가 이미 정리된 경우
+            pass
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
