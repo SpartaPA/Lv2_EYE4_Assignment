@@ -7,7 +7,7 @@ RealSense 영상에서 파란색 목표(퍽)를 HSV 색상으로 찾아, 화면 
 | `ros2_ws/src/realsense_tracker/realsense_tracker/detector.py` | 검출 알고리즘 (ROS·카메라와 무관) — 노드와 도구가 함께 사용 |
 | `ros2_ws/src/realsense_tracker/realsense_tracker/perception_node.py` | ROS 2 인지 노드 — `/target` 발행 |
 | `ros2_ws/src/realsense_tracker/config/tracker.yaml` | 인지 파라미터 (`perception_node` 항목) |
-| `config/camera.yaml` | 카메라 해상도·fps (도구에서 사용) |
+| `config/camera.yaml` | 카메라 해상도·fps·profile, **카메라 토픽 이름** (노드와 도구가 사용) |
 | `tools/hsv_tuning.py` | HSV 범위 튜너 (트랙바) → `tracker.yaml`에 저장 |
 | `tools/image_capture.py` | 정상·미검출·가림 장면 검출 결과 저장 → `results/` |
 | `tools/common.py` | 도구 공통 (경로, 설정 읽기, RealSense 카메라) |
@@ -30,33 +30,62 @@ RealSense 영상에서 파란색 목표(퍽)를 HSV 색상으로 찾아, 화면 
 - 제어는 **`z == 0`이면 미검출**로 판단합니다. (`x = y = 0`만으로는 "정중앙"과 구분되지 않음)
 - 영상이 들어올 때마다 1번씩 발행합니다. 영상이 끊기면 발행도 멈춥니다.
 
-## 2. 인지 노드 실행 (`perception_node`)
+## 2. 카메라 토픽 확인 (RealSense ROS 2 wrapper)
+
+카메라는 별도 노드 없이 RealSense ROS 2 wrapper(`realsense2_camera`)가 발행하는 토픽을 인지 노드가 직접 구독합니다.
+**실제 토픽 이름은 wrapper 버전·설정에 따라 다르므로 추측해서 적지 않고**, 아래처럼 확인한 값을 `config/camera.yaml`에 기록합니다.
+(`color_topic`이 비어 있으면 인지 노드는 시작하지 않고 이 안내를 출력합니다.)
+
+```bash
+# 1) wrapper 설치 (한 번만, Ubuntu 24.04 + ROS 2 Lyrical)
+sudo apt install ros-lyrical-realsense2-camera
+
+# 2) wrapper 실행 — 깊이를 컬러에 정렬(align)해서 발행
+#    (파라미터 이름은 wrapper 버전에 따라 다를 수 있음 → ros2 launch realsense2_camera rs_launch.py --show-args 로 확인)
+ros2 launch realsense2_camera rs_launch.py align_depth.enable:=true
+
+# 3) 다른 터미널에서 실제 토픽 이름·형식 확인
+ros2 topic list | grep -E "color|depth|camera_info"
+ros2 topic type <확인한 토픽>
+ros2 topic echo <컬러 토픽> --once --field encoding     # bgr8 / rgb8
+ros2 topic echo <컬러 토픽> --once --field header        # frame_id, stamp
+ros2 topic hz <컬러 토픽>                                # 실제 fps
+```
+
+확인한 값을 `config/camera.yaml`의 `color_topic`, `aligned_depth_topic`, `camera_info_topic`에 기록합니다.
+가이드에 따라 encoding, frame_id, stamp, 실제 profile, D435 serial·firmware, wrapper 버전, USB 속도도 함께 기록해 두세요.
+
+## 3. 인지 노드 실행 (`perception_node`)
 
 ```bash
 cd lv2_module5/ros2_ws
 colcon build --packages-select realsense_tracker
 source install/setup.bash
+cd ..                                            # lv2_module5 폴더로
 ros2 run realsense_tracker perception_node --ros-args \
-  --params-file src/realsense_tracker/config/tracker.yaml
+  --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml \
+  -p camera_config:=$PWD/config/camera.yaml
 ```
 
-- 구독: `/camera/color/image_raw` (bgr8 / rgb8), `use_depth: true`이면 `/camera/depth/image_raw` (컬러에 정렬된 16UC1 / 32FC1)
+- 구독: `camera.yaml`의 `color_topic` (bgr8 / rgb8), `use_depth: true`이면 `aligned_depth_topic` (컬러에 정렬된 16UC1 / 32FC1)
+- launch로 실행할 때는 `camera_config`에 `config/camera.yaml`의 절대 경로를 넘기면 됩니다. (통합 담당)
 - 확인 화면: `-p publish_debug_image:=true`로 실행하면 `/perception/debug_image`에 검출 결과를 그린 영상이 나옵니다.
   (`ros2 run rqt_image_view rqt_image_view`로 확인)
-- 필요한 패키지: `rclpy`, `sensor_msgs`, `geometry_msgs`, `message_filters`, `python3-numpy`, `python3-opencv`
+- 필요한 패키지: `rclpy`, `sensor_msgs`, `geometry_msgs`, `message_filters`, `python3-numpy`, `python3-opencv`, `python3-yaml`
   (`cv_bridge`는 쓰지 않고 영상을 직접 변환)
 
 ### 영상 구독 방식 (`image_reliable`)
 
 - 기본값 `true` (reliable). 노트북(Fast DDS 기본 설정)에서 실측한 결과, **640×480 영상은 다른 프로세스에서 받을 때
   reliable 구독일 때만 전달**되고 best effort 구독으로는 한 장도 전달되지 않았습니다.
-- camera_node의 발행 방식과 맞아야 합니다. **reliable 구독 + best effort 발행은 연결되지 않습니다.**
-  camera_node가 best effort로 발행한다면 `image_reliable: false`로 바꾸세요.
+- RealSense wrapper의 발행 방식과 맞아야 합니다. **reliable 구독 + best effort 발행은 연결되지 않습니다.**
+  wrapper가 best effort로 발행한다면 `image_reliable: false`로 바꾸세요. (`ros2 topic info -v <컬러 토픽>`의 Reliability로 확인)
 
 ### 파라미터 (`tracker.yaml`의 `perception_node`)
 
 | 이름 | 기본값 | 뜻 |
 |---|---|---|
+| `camera_config` | (빈 값) | `config/camera.yaml` 경로 — 카메라 토픽 이름을 여기서 읽음 (반드시 지정) |
 | `hsv_lower`, `hsv_upper` | `[93, 120, 35]`, `[130, 255, 255]` | 목표 색 HSV 범위 (OpenCV: H 0~179) |
 | `min_area_ratio` | 0.002 | 화면 넓이 대비 최소 크기 |
 | `blur_ksize`, `morph_ksize` | 5, 5 | 블러·잡음 제거 크기 |
@@ -66,9 +95,9 @@ ros2 run realsense_tracker perception_node --ros-args \
 | `publish_debug_image` | false | 확인 화면 발행 |
 | `image_reliable` | true | 영상 구독 방식 (위 설명) |
 
-## 3. 도구 (노트북, ROS 없이 RealSense 직접 사용)
+## 4. 도구 (노트북, ROS 없이 RealSense 직접 사용)
 
-ROS의 camera_node가 RealSense를 쓰고 있으면 도구가 카메라를 열 수 없습니다. (카메라는 한 프로그램만 사용 가능)
+RealSense wrapper가 카메라를 쓰고 있으면 도구가 카메라를 열 수 없습니다. (카메라는 한 프로그램만 사용 가능)
 
 ### 설치 (한 번만)
 
@@ -78,7 +107,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r tools/requirements.txt
 ```
 
-### 3-1. HSV 범위 조절 (`hsv_tuning.py`)
+### 4-1. HSV 범위 조절 (`hsv_tuning.py`)
 
 ```bash
 python tools/hsv_tuning.py
@@ -96,7 +125,7 @@ python tools/hsv_tuning.py
 
 트랙바 이름이 안 보이면 한글 글꼴(`fonts-noto-cjk`)이 설치되어 있는지 확인하세요.
 
-### 3-2. 장면별 검출 결과 저장 (`image_capture.py`)
+### 4-2. 장면별 검출 결과 저장 (`image_capture.py`)
 
 ```bash
 python tools/image_capture.py              # 화면이 있는 노트북
@@ -115,7 +144,7 @@ python tools/image_capture.py --headless   # 화면 없는 SSH (터미널에 n/e
 - `results/logs/perception/log.csv` — 열: `time, scene, found, ex, ey, z, dist_cm, n_candidates, width, height, hsv_ranges, min_area_ratio`
 - 같은 초에 같은 장면을 다시 저장하면 이름 뒤에 `_2`, `_3`이 붙습니다.
 
-## 4. 알아둘 점
+## 5. 알아둘 점
 
 - **목표는 가장 큰 덩어리 1개만 고릅니다.** 비슷한 색의 더 큰 물체(남색, 하늘색 등)가 있으면 그쪽을 목표로 잡을 수 있습니다.
   화면의 `candidates`가 2 이상이면 다른 후보가 있다는 뜻입니다.

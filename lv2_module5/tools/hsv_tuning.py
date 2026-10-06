@@ -3,7 +3,7 @@
 실행 (lv2_module5 폴더에서):  python tools/hsv_tuning.py      (화면 필요 → 노트북에서 실행)
 저장 위치: ros2_ws/src/realsense_tracker/config/tracker.yaml 의 perception_node 항목
   - hsv_lower, hsv_upper, min_area_ratio 값만 바뀌고, 주석과 다른 항목은 그대로 유지됨
-※ ROS의 camera_node가 RealSense를 쓰고 있으면 열리지 않음 (카메라는 한 프로그램만 사용 가능)
+※ RealSense ROS wrapper(realsense2_camera)가 카메라를 쓰고 있으면 열리지 않음 (카메라는 한 프로그램만 사용 가능)
 """
 import os
 
@@ -39,6 +39,7 @@ def nothing(_):
 def save_params(path, hsv_lower, hsv_upper, min_area_ratio):
     """tracker.yaml에서 perception_node의 hsv_lower, hsv_upper, min_area_ratio 값만 바꿔 저장 (주석·다른 항목 유지)"""
     ry = YAML()                                   # 기본 모드(round-trip) = 주석과 형식 유지
+    ry.preserve_quotes = True                     # "" 같은 따옴표 모양도 그대로 유지
     with open(path, "r", encoding="utf-8") as f:
         data = ry.load(f)
     p = data["perception_node"]["ros__parameters"]

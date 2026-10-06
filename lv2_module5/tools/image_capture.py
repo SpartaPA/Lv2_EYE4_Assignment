@@ -9,7 +9,7 @@
   python tools/image_capture.py              # 노트북(GUI)
   python tools/image_capture.py --headless   # SSH(라즈베리파이): 터미널에 n/e/o/q 입력 후 Enter
 설정: ros2_ws/src/realsense_tracker/config/tracker.yaml (perception_node), config/camera.yaml
-※ ROS의 camera_node가 RealSense를 쓰고 있으면 열리지 않음 (카메라는 한 프로그램만 사용 가능)
+※ RealSense ROS wrapper(realsense2_camera)가 카메라를 쓰고 있으면 열리지 않음 (카메라는 한 프로그램만 사용 가능)
 """
 import argparse
 import csv

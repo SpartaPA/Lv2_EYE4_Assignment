@@ -1,8 +1,9 @@
 """인지 노드 (담당: 인지) — 컬러(+깊이) 영상에서 파란색 목표를 찾아 /target 발행
 
-구독
-  /camera/color/image_raw   sensor_msgs/Image  (bgr8 또는 rgb8)
-  /camera/depth/image_raw   sensor_msgs/Image  (16UC1 또는 32FC1, 컬러에 정렬된 깊이) — use_depth: true일 때만
+구독 (토픽 이름은 코드에 적지 않고 config/camera.yaml에서 읽음 — 파일 경로는 파라미터 camera_config)
+  color_topic           sensor_msgs/Image  (bgr8 또는 rgb8)
+  aligned_depth_topic   sensor_msgs/Image  (16UC1 또는 32FC1, 컬러에 정렬된 깊이) — use_depth: true일 때만
+  (camera_info_topic은 이 노드에서 쓰지 않음 — 확인·기록용)
 발행
   /target                   geometry_msgs/PointStamped  (발제문 지정 — 이름·형식 임의 변경 금지)
       point.x = ex  화면 중심 기준 가로 어긋남 (−1 ~ +1, 오른쪽이 +)
@@ -13,10 +14,13 @@
   /perception/debug_image   sensor_msgs/Image (bgr8) — publish_debug_image: true일 때만 (확인용 화면)
 
 파라미터: config/tracker.yaml 의 perception_node 항목 (기본값은 detector.PARAM_DEFAULTS)
-실행 예: ros2 run realsense_tracker perception_node --ros-args --params-file <tracker.yaml 경로>
+실행 예 (lv2_module5 폴더에서):
+  ros2 run realsense_tracker perception_node --ros-args \\
+    --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml -p camera_config:=$PWD/config/camera.yaml
 """
 import numpy as np
 import rclpy
+import yaml
 from geometry_msgs.msg import PointStamped
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from rclpy.executors import ExternalShutdownException
@@ -28,14 +32,27 @@ from .detector import PARAM_DEFAULTS, cfg_from_params, detect, draw
 
 # 인지 파라미터 외에 노드에서만 쓰는 파라미터
 NODE_PARAM_DEFAULTS = {
+    "camera_config": "",            # config/camera.yaml 경로 — 카메라 토픽 이름을 여기서 읽음 (launch에서 지정)
     "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)를 확인 화면·로그에 표시
     "depth_unit_m": 0.001,          # 16UC1 깊이 값 1이 몇 m인지 (RealSense 기본: 1mm)
     "publish_debug_image": False,   # true면 /perception/debug_image 발행 (rqt_image_view 등으로 확인)
     # 영상 구독 방식. true = reliable (전달 보장), false = best effort (센서용, 손실 허용)
     # 실측(노트북, Fast DDS 기본 설정): 640x480 영상은 다른 프로세스에서 받을 때 reliable일 때만 전달됨
-    # ※ camera_node의 발행 방식과 맞아야 함 (reliable 구독 + best effort 발행 → 연결 안 됨)
+    # ※ RealSense wrapper의 발행 방식과 맞아야 함 (reliable 구독 + best effort 발행 → 연결 안 됨)
     "image_reliable": True,
 }
+CAMERA_TOPIC_KEYS = ("color_topic", "aligned_depth_topic", "camera_info_topic")
+
+
+class ConfigError(Exception):
+    """설정이 없거나 비어 있어 노드를 시작할 수 없음"""
+
+
+def load_camera_topics(path):
+    """camera.yaml에서 카메라 토픽 이름을 읽는다. 반환: {color_topic, aligned_depth_topic, camera_info_topic}"""
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    return {key: str(data.get(key) or "").strip() for key in CAMERA_TOPIC_KEYS}
 
 
 def image_to_numpy(msg):
@@ -81,6 +98,21 @@ class PerceptionNode(Node):
         self.last_found = None          # 검출 상태가 바뀔 때만 로그를 남기기 위함
         self.warned_size = False
 
+        # 카메라 토픽 이름: config/camera.yaml (가이드: 코드에 하드코딩하지 않음)
+        cam_path = params["camera_config"]
+        if not cam_path:
+            raise ConfigError("camera_config 파라미터가 비어 있음 → "
+                              "-p camera_config:=<lv2_module5/config/camera.yaml 경로> 로 지정하세요")
+        try:
+            topics = load_camera_topics(cam_path)
+        except OSError as e:
+            raise ConfigError(f"camera_config 파일을 읽을 수 없음: {e}")
+        needed = ["color_topic"] + (["aligned_depth_topic"] if self.use_depth else [])
+        missing = [key for key in needed if not topics[key]]
+        if missing:
+            raise ConfigError(f"{cam_path}의 {', '.join(missing)} 값이 비어 있음 → RealSense wrapper 실행 후 "
+                              "`ros2 topic list`로 실제 이름을 확인해 기록하세요")
+
         self.pub = self.create_publisher(PointStamped, "/target", 10)
         self.debug_pub = (self.create_publisher(Image, "/perception/debug_image", 1)
                           if params["publish_debug_image"] else None)
@@ -89,17 +121,19 @@ class PerceptionNode(Node):
         qos = (QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
                if params["image_reliable"] else qos_profile_sensor_data)
         if self.use_depth:
-            color = Subscriber(self, Image, "/camera/color/image_raw", qos_profile=qos)
-            depth = Subscriber(self, Image, "/camera/depth/image_raw", qos_profile=qos)
+            color = Subscriber(self, Image, topics["color_topic"], qos_profile=qos)
+            depth = Subscriber(self, Image, topics["aligned_depth_topic"], qos_profile=qos)
             self.sync = ApproximateTimeSynchronizer([color, depth], queue_size=10, slop=0.05)  # 시각 차 50ms 이내끼리 묶음
             self.sync.registerCallback(self.on_images)
         else:
-            self.create_subscription(Image, "/camera/color/image_raw", self.on_images, qos)
+            self.create_subscription(Image, topics["color_topic"], self.on_images, qos)
 
         r = self.cfg["hsv"]["ranges"][0]
         self.get_logger().info(
-            f"인지 노드 시작: HSV {r['lower']}~{r['upper']}, min_area_ratio={self.cfg['min_area_ratio']}, "
-            f"깊이 사용={self.use_depth}, 영상 구독={'reliable' if params['image_reliable'] else 'best effort'}, "
+            f"인지 노드 시작: 컬러 {topics['color_topic']}"
+            + (f", 깊이 {topics['aligned_depth_topic']}" if self.use_depth else "")
+            + f", HSV {r['lower']}~{r['upper']}, min_area_ratio={self.cfg['min_area_ratio']}, "
+            f"영상 구독={'reliable' if params['image_reliable'] else 'best effort'}, "
             f"확인 화면 발행={self.debug_pub is not None}")
 
     def on_images(self, color_msg, depth_msg=None):
@@ -145,7 +179,12 @@ class PerceptionNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PerceptionNode()
+    try:
+        node = PerceptionNode()
+    except ConfigError as e:  # 설정 문제는 긴 오류 대신 해야 할 일을 알려주고 종료
+        rclpy.logging.get_logger("perception_node").fatal(str(e))
+        rclpy.try_shutdown()
+        raise SystemExit(1)
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):  # Ctrl+C·종료 신호는 정상 종료로 처리

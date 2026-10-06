@@ -28,15 +28,15 @@ def load_params(path=PARAMS_PATH):
 
 
 def load_camera(path=CAMERA_PATH):
-    """camera.yaml의 camera 항목 (width, height, fps)"""
+    """camera.yaml 전체 (width, height, fps, profile, 토픽 이름) — 도구는 width, height, fps만 사용"""
     with open(path, "r", encoding="utf-8") as f:
-        return (yaml.safe_load(f) or {})["camera"]
+        return yaml.safe_load(f) or {}
 
 
 class RealSenseCamera:
     """RealSense에서 컬러 영상과 (컬러 좌표에 맞춰 정렬된) 깊이 영상을 읽는다.
 
-    cam_cfg: camera.yaml의 camera 항목 (width, height, fps)
+    cam_cfg: camera.yaml 내용 (width, height, fps 사용)
     """
 
     def __init__(self, cam_cfg):
@@ -49,7 +49,7 @@ class RealSenseCamera:
         config.enable_stream(rs.stream.depth, w, h, rs.format.z16, fps)
         try:
             profile = self.pipeline.start(config)
-        except RuntimeError as e:  # 연결 안 됨, 다른 프로그램(ROS camera_node 등)이 사용 중, 지원하지 않는 해상도 등
+        except RuntimeError as e:  # 연결 안 됨, 다른 프로그램(RealSense ROS wrapper 등)이 사용 중, 지원하지 않는 해상도 등
             raise SystemExit(f"RealSense를 열 수 없습니다: {e}")
         self.depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()  # 깊이 값 → 미터
         self.align = rs.align(rs.stream.color)  # 깊이를 컬러 좌표에 맞춤 (같은 픽셀 = 같은 지점)
