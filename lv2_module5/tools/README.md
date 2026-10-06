@@ -184,15 +184,20 @@ python tools/image_capture.py
 노드가 스스로 검출로 표시한 비율은 정답 대조 검출률과 다릅니다.
 
 ```bash
+# 모든 터미널에서 같은 ROS_DOMAIN_ID 사용 (같은 네트워크의 다른 팀·장비 노드와 섞이지 않도록) 예: export ROS_DOMAIN_ID=42
 # 터미널 1: RealSense wrapper (2장 참고)
 # 터미널 2: 인지 노드 — 확인 화면 발행 필요
 ros2 run realsense_tracker perception_node --ros-args \
   --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml \
   -p camera_config:=$PWD/config/camera.yaml -p publish_debug_image:=true
 # 터미널 3 (lv2_module5 폴더, ROS 환경): 평가 프레임 저장
-python3 tools/eval_frames.py --scene visible --note "거리 40cm, 실내 조명"   # 목표를 움직이며 15초 동안 30장
-python3 tools/eval_frames.py --scene empty   --note "목표 치움"              # 목표 없이 10초 동안 10장
+python3 tools/eval_frames.py --scene visible --note "거리 40cm, 실내 조명"   # SPACE 후 15초 동안 30장
+python3 tools/eval_frames.py --scene empty   --note "목표 치움"              # SPACE 후 10초 동안 10장
 ```
+
+- 실행하면 창에 인지 노드의 검출 화면이 실시간으로 뜹니다. 장면을 준비한 뒤 창을 클릭하고 **SPACE**를 누르면 저장을 시작하고,
+  창 아래에 `REC 저장한 장수/전체`가 표시됩니다. **q**(또는 ESC)는 종료합니다. (화면 없이 바로 저장: `--no-view`)
+- visible은 저장하는 동안 목표를 화면 안의 여러 위치(좌·우·위·아래·중앙)로 천천히 옮기면 "고르게 고른" 프레임이 됩니다.
 
 저장 결과:
 - `results/images/evaluation/<scene>_<시각>/NN_raw.png`, `NN_det.png` — 원본 / 노드 검출 결과 그림
