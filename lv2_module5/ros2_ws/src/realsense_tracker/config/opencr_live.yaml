@@ -1,0 +1,22 @@
+# opencr_node LIVE(실제 모터 구동) 설정 — Raspberry Pi runtime. Source of Truth (통합 + 제어 관리)
+#
+# 이 파일을 쓰기 전에 (README "실제 Tracking 실행" 사전조건):
+#   1) OpenCR에 LIVE 펌웨어(-DENABLE_MOTOR_OUTPUT=1)를 올렸고 STATUS가 MODE=LIVE인지 확인
+#   2) 카메라를 손으로 지지할 수 있는 상태, 두 축이 중립 자세(Pan 3078±20, Tilt 0 mod 4096 ±20) 부근
+#   3) 같은 Pi에서 control_node가 실행 중 (명령 시각과 opencr_node 시각이 같은 Pi 시계라 시계 동기 문제 없음)
+# 노드를 실행해도 모터는 움직이지 않는다: /opencr/prepare(토크 ON) → /opencr/arm(구동 허가)을 운영자가 직접 호출해야 한다.
+opencr_node:
+  ros__parameters:
+    serial_mode: true
+    dry_run: false                  # LIVE에서는 false여야 함 (DRY 설정과 섞이면 시작 거부)
+    expected_board_mode: LIVE       # 보드 STATUS의 MODE가 LIVE가 아니면 즉시 FAULT
+    enable_live_hardware: true      # 실제 모터 출력에 대한 명시적 확인. 이 값이 없으면 LIVE 시작 거부
+    # 2026-10-06 docs/hardware.md에 기록된 실제 OpenCR 경로. 장비를 바꾸면 ls -l /dev/serial/by-id/ 로 다시 확인
+    port: "/dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00"
+    usb_serial_baudrate: 115200     # Pi ↔ OpenCR USB (DYNAMIXEL 버스 1 Mbps와 별개)
+    # control_node 명령의 최대 나이(초). Pi 내부 DDS 전달 + 실행 지연 여유. 펌웨어 명령 timeout(0.3초)보다 작아야 함.
+    # Pi 부하(카메라·인지 동시 실행)로 거부·ROS_COMMAND_TIMEOUT이 나면 원인을 기록하고, 값을 바꾸면 이유를 report에 기록한다.
+    command_max_age_sec: 0.15
+    # 시리얼 송수신 로그. 매 실행마다 bag과 같은 run_id로 바꿔서 지정 (예: -p csv_path:=$HOME/runs/<run_id>_serial.csv)
+    # 'x' 모드로 열기 때문에 같은 파일이 있으면 시작을 거부한다 (기존 증거 보호).
+    csv_path: ""
