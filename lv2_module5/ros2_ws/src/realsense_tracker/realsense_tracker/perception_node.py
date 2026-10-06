@@ -14,7 +14,8 @@
       header = 입력 컬러 영상의 시각·좌표계
   /perception/debug_image   sensor_msgs/Image (bgr8) — publish_debug_image: true일 때만 (확인용 화면)
 
-파라미터: config/tracker.yaml 의 perception_node 항목 (기본값은 detector.PARAM_DEFAULTS)
+파라미터: config/tracker.yaml 의 perception_node 항목 (기본값은 detector.PARAM_DEFAULTS,
+          단 유효 추적 거리 depth_min/max_distance_cm은 기본값 없이 tracker.yaml에서만 받음)
 실행 예 (lv2_module5 폴더에서):
   ros2 run realsense_tracker perception_node --ros-args \\
     --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml -p camera_config:=$PWD/config/camera.yaml
@@ -26,6 +27,7 @@ import rclpy
 import yaml
 from geometry_msgs.msg import PointStamped
 from message_filters import ApproximateTimeSynchronizer, Subscriber
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
@@ -36,7 +38,7 @@ from .detector import PARAM_DEFAULTS, cfg_from_params, detect, draw
 # 인지 파라미터 외에 노드에서만 쓰는 파라미터
 NODE_PARAM_DEFAULTS = {
     "camera_config": "",            # config/camera.yaml 경로 — 카메라 토픽 이름을 여기서 읽음 (launch에서 지정)
-    "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)를 확인 화면·로그에 표시
+    "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)로 유효 추적 거리 판정, 확인 화면·로그에 표시
     "depth_unit_m": 0.001,          # 16UC1 깊이 값 1이 몇 m인지 (RealSense 기본: 1mm)
     "publish_debug_image": False,   # true면 /perception/debug_image 발행 (rqt_image_view 등으로 확인)
     "stats_period_sec": 5.0,        # 이 간격(초)마다 처리 FPS·처리 시간을 로그로 남김 (0이면 끔)
@@ -48,6 +50,8 @@ NODE_PARAM_DEFAULTS = {
     #   best effort → 컬러 1.2 fps, 정렬 깊이 0 fps / reliable → 둘 다 29.4 fps  → reliable 사용
     "image_reliable": True,
 }
+# 유효 추적 거리 (cm) — 코드에 기본값을 두지 않고 tracker.yaml 값만 사용
+RANGE_PARAM_NAMES = ("depth_min_distance_cm", "depth_max_distance_cm")
 CAMERA_TOPIC_KEYS = ("color_topic", "aligned_depth_topic", "camera_info_topic")
 
 
@@ -99,6 +103,12 @@ class PerceptionNode(Node):
         super().__init__("perception_node")
         params = {name: self.declare_parameter(name, default).value
                   for name, default in {**PARAM_DEFAULTS, **NODE_PARAM_DEFAULTS}.items()}
+        for name in RANGE_PARAM_NAMES:  # 기본값 없이 선언 → tracker.yaml에 없으면 None (13 / 13.0 둘 다 허용)
+            params[name] = self.declare_parameter(name, None, ParameterDescriptor(dynamic_typing=True)).value
+        missing = [name for name in RANGE_PARAM_NAMES if params[name] is None]
+        if missing:
+            raise ConfigError(f"tracker.yaml(perception_node)에 {', '.join(missing)} 값이 없음 → "
+                              "유효 추적 거리(cm)를 tracker.yaml에 지정하세요")
         self.cfg = cfg_from_params(params)
         self.use_depth = bool(params["use_depth"])
         self.depth_unit_m = float(params["depth_unit_m"])
@@ -143,11 +153,14 @@ class PerceptionNode(Node):
 
         name = lambda reliable: "reliable" if reliable else "best effort"
         r = self.cfg["hsv"]["ranges"][0]
+        d = self.cfg["depth"]
         self.get_logger().info(
             f"인지 노드 시작: 컬러 {topics['color_topic']}"
             + (f", 깊이 {topics['aligned_depth_topic']}" if self.use_depth else "")
             + f", HSV {r['lower']}~{r['upper']}, min_area_ratio={self.cfg['min_area_ratio']}, "
-            f"/target 발행={name(params['target_reliable'])}·depth 1, "
+            + (f"유효 추적 거리 {d['min_distance_cm']:g}~{d['max_distance_cm']:g} cm, " if self.use_depth
+               else "유효 추적 거리 판정 안 함(use_depth: false), ")
+            + f"/target 발행={name(params['target_reliable'])}·depth 1, "
             f"영상 구독={name(params['image_reliable'])}·depth 1, "
             f"확인 화면 발행={self.debug_pub is not None}")
 
