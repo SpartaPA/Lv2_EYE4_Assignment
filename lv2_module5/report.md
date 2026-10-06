@@ -11,6 +11,7 @@
 | 대상 | 파란색 퍽 1개 (단일 색상, 단일 대상) | results/images/detection |
 | 추적 | Pan(좌우, ex) + Tilt(상하, ey) 속도형 P 제어 | control.yaml |
 | 해상도 | 640×480 @30 fps (Color rgb8) | camera.yaml |
+| 실행 환경 | 발제 기본 환경(인지·제어는 PC, OpenCR 빌드·시리얼은 Pi)과 달리 D435와 모든 ROS 2 노드를 Raspberry Pi 한 대에서 실행, PC는 SSH 터미널만 사용 (팀 장비 배치 기준). `/target` 규약·안전·시험 기준은 발제와 동일 | README 2절 |
 | 시험 횟수 | 정상 30 s 이상 · 가림 약 2 s × 5 · /target 중단 ≥1 · 제어 통신 중단 ≥1 · Kp A/B × 3 | config/test.yaml |
 | 판정 | 복구 성공 = 재등장 후 3 s 이내 TRACKING, 평가 프레임 목표 30 / 배경 10 | config/test.yaml |
 | Kp A/B | **미확정 (null)** — 방향 확인 후 시험 전에 확정 | TODO |
@@ -87,7 +88,7 @@ HSV 근거·오검출 조건: H 93~130은 파란 퍽 범위, S 하한 120으로 
 **7. 결과 해석** — 오른쪽 목표(x=+0.4)에 Pan 음의 명령(= 모터 원시 우측)이 나와 오차를 줄이는 방향이다(원시 방향 근거: docs/hardware.md). 부호가 반대면 카메라가 목표 반대쪽으로 돌아 오차가 커지고 목표가 화면 밖으로 나간다 → Kp를 키우지 말고 direction부터 확인.
 미검출(z=0)은 신선한 입력이므로 즉시 LOST, 토픽 침묵은 0.5 s 뒤 timeout으로 LOST — 두 경우를 구분한다. 노드별 책임: 인지는 오차만, 제어는 판단·부호·상한, bridge는 신선도·세션, 펌웨어는 각도 경계·하드웨어 timeout.
 
-**8. 남은 검증** — 이번 수정(축별 파라미터, `/control/enable`)을 포함한 현재 commit으로 `test_control_dry` Pi 재실행 (README 10절). 이 환경(Windows, ROS 없음)에서는 ROS 런너를 실행하지 못했다. 순수 로직 단위 시험 32개는 통과(아래 "자동 검사").
+**8. 남은 검증** — 이번 수정(축별 파라미터, `/control/enable`)을 포함한 현재 commit으로 `test_control_dry` Pi 재실행 (README 10절). ROS 런너는 아직 실행하지 못했다(NOT RUN). 순수 로직 단위 시험 32개는 통과(아래 "자동 검사").
 
 **9. 한계** — DRY 출력은 모의 처리 결과이며 실제 모터 피드백이 아니다.
 
@@ -184,15 +185,14 @@ B. 결과 재분석: 저장된 /target·상태·명령 재생 → 같은 `tracki
 
 ---
 
-## 자동 검사 (2026-10-07, 이 저장소, Windows + uv Python 3.12 — ROS 없음)
+## 자동 검사 (2026-10-07, ROS 2 없는 환경)
 
 | 검사 | 결과 |
 |---|---|
 | `python -m unittest discover -s test` (control_core 9, serial_core 19, detector 4) | 32 PASS |
 | Python 29개 문법, YAML 8개, XML 2개 파싱 | PASS |
-| 펌웨어 host native 시험 (zig c++ -Wall -Wextra -Werror, DRY / LIVE_STUB) | PASS / PASS |
-| `analyze_tracking.py` 합성 CSV 동작 확인 | 동작 (결과 데이터 아님, 저장 안 함) |
-| colcon build, `ros2 pkg executables`, ROS 런너(test_control_dry 등) | **실행 못 함** (이 환경에 ROS 2 없음) → Pi에서 README 8·10·11절 |
+| 펌웨어 host native 시험 (DRY / LIVE_STUB) | PASS / PASS |
+| colcon build, `ros2 pkg executables`, ROS 런너(test_control_dry 등) | NOT RUN — Pi에서 README 8·10·11절로 실행 필요 |
 
 ## 심화·도전 과제
 

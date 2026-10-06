@@ -185,9 +185,7 @@ ros2 run realsense_tracker test_control_dry --output-dir $OUT/dry 2>&1 | tee $OU
 | 6 | z=0 | LOST, stop=true, 두 축 0 (즉시) |
 | 7 | /target 발행 중단 | 0.5 s 후 LOST, stop=true |
 
-수동 확인: `ros2 launch realsense_tracker control_dry.launch.py` 실행 후
-`ros2 topic pub -r 30 /target geometry_msgs/msg/PointStamped "{header: {stamp: now}, point: {x: 0.4, y: 0.0, z: 0.1}}" --qos-reliability best_effort`
-(`stamp: now`를 지원하지 않는 버전이면 자동 시험 (b)를 기준으로 한다).
+수동으로 명령·상태를 보려면 `ros2 launch realsense_tracker control_dry.launch.py` (모터 출력 없음). 판정 기준은 자동 시험 (b)이다.
 
 ## 11. OpenCR DRY test — 실제 보드, 모터 출력 없음
 

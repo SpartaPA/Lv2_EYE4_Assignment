@@ -19,7 +19,7 @@
 
 파라미터: config/tracker.yaml 의 perception_node 항목 (기본값은 detector.PARAM_DEFAULTS)
   enforce_depth_range: false(기본) → 깊이는 기록용. true일 때만 거리 범위 밖을 미검출로 처리 (선택 기능)
-시각: header = 입력 컬러 영상의 header (wrapper가 채운 촬영 시각). 새 시각을 만들어 붙이지 않는다.
+시각: header = 입력 컬러 영상의 header (wrapper가 채운 영상 시각 — 촬영 시각인지는 미확인). 새 시각을 만들어 붙이지 않는다.
 bag 재처리: -p use_sim_time:=true -r /target:=/target_replay 로 기존 /target과 섞이지 않게 실행 (README 문제 5)
 실행 예: README의 "Problem 1 실행" 참고 (tracker.launch.py가 camera_config 경로를 자동으로 넘김)
 """

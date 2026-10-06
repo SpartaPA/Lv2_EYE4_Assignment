@@ -20,7 +20,7 @@
 
 | 필드 | 의미 |
 |---|---|
-| header.stamp / frame_id | 입력 Color 영상의 header 그대로 (wrapper 촬영 시각, `camera_color_optical_frame`) |
+| header.stamp / frame_id | 입력 Color 영상의 header 그대로 (wrapper가 채운 영상 시각 — 촬영 시각인지는 미확인, Pi에서 확인 TODO; frame_id `camera_color_optical_frame`) |
 | point.x | ex = (cx − W/2)/(W/2), 오른쪽 + |
 | point.y | ey = (cy − H/2)/(H/2), 아래쪽 + |
 | point.z | area_ratio = contour_area/(W·H), 검출 시 (0, 1], **미검출 = 0** |
