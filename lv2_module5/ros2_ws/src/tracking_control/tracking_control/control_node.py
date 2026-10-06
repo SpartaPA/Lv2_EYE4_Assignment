@@ -6,8 +6,8 @@ tracking_control / control_node.py
 제어(control) 파트에서 사용할 수 있는 형태로 전달받는
 최소 ROS 2 subscriber 노드이다.
 
-현재 단계에서는 인지 → 제어 인터페이스 연결만 검증한다.
-따라서 실제 제어 알고리즘이나 모터 제어는 구현하지 않는다.
+현재 단계에서는 인지 → 제어 인터페이스와 제어 parameter 설정 기반을 준비한다.
+parameter는 선언·검증만 하며 P Control이나 모터 제어에는 아직 사용하지 않는다.
 
 [입력]
 Topic:
@@ -53,11 +53,11 @@ Message field:
     4. x, y, z 값 확인
     5. header timestamp 확인
     6. target miss / detected 상태 로그 출력
+    7. Kp, 방향, 속도 제한, deadband parameter 선언
+    8. 설정된 parameter의 타입·명백한 유효성 검사
 
 [현재 구현하지 않는 기능]
-    - P Control
-    - Kp / 제어 게인
-    - Deadband
+    - P Control 계산 (다음 단계)
     - Motor command 생성
     - OpenCR 통신
     - Dynamixel 제어
@@ -68,13 +68,15 @@ Message field:
     - Custom PanTiltCommand 메시지
 
 [다음 단계]
-현재 노드의 /target 수신 구조를 검증한 후
-ROS 2 package entry point를 등록하고 build 및 실제 topic 수신을 검증한다.
+parameter 값이 확정된 뒤 P Control 계산을 별도 단계에서 추가한다.
 """
+
+import math
 
 import rclpy
 from geometry_msgs.msg import PointStamped
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rclpy.qos import (
     DurabilityPolicy,
     HistoryPolicy,
@@ -86,6 +88,23 @@ from rclpy.qos import (
 class ControlNode(Node):
     def __init__(self):
         super().__init__("control_node")
+
+        self.control_parameters = {}
+        for name in ("kp_pan", "kp_tilt", "pan_speed_limit", "tilt_speed_limit",
+                     "pan_deadband", "tilt_deadband"):
+            value = self.declare_parameter(name, Parameter.Type.DOUBLE).value
+            self._validate_finite_parameter(name, value)
+            if value is not None and name.endswith("speed_limit") and value < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+            if value is not None and name.endswith("deadband") and value < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+            self.control_parameters[name] = value
+
+        for name in ("pan_direction", "tilt_direction"):
+            value = self.declare_parameter(name, Parameter.Type.INTEGER).value
+            if value is not None and value not in (-1, 1):
+                raise ValueError(f"{name} must be either -1 or 1")
+            self.control_parameters[name] = value
 
         target_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -99,6 +118,10 @@ class ControlNode(Node):
             self.target_callback,
             target_qos,
         )
+
+    def _validate_finite_parameter(self, name: str, value):
+        if value is not None and not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
 
     def target_callback(self, msg: PointStamped):
         x = msg.point.x
