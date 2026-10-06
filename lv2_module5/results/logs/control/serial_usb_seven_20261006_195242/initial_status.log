@@ -1,0 +1,2 @@
+{"phase": "BOOT", "reason": "", "serial_opened": true, "expected_mode": "DRY", "board": {"state": "BOOT", "mode": "DRY", "armed": 0, "goal": [0, 0], "pos": [0, 0], "vel": [0, 0], "torque": [0, 0], "age_ms": 108377, "t_ms": 108377}, "board_receipt_age_sec": 0.07054638399858959}
+---

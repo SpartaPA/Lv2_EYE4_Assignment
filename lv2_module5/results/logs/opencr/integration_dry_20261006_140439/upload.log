@@ -1,0 +1,18 @@
+opencr_ld ver 1.0.4
+opencr_ld_main 
+>>
+file name : /home/pa44/pa-opencr-build/build/tracking_controller_2axis_dry/tracking_controller_2axis.ino.bin 
+file size : 103 KB
+Open port OK
+Clear Buffer Start
+Clear Buffer End
+Board Name : OpenCR R1.0
+Board Ver  : 0x17020800
+Board Rev  : 0x00000000
+>>
+flash_erase : 0 : 1.056000 sec
+flash_write : 0 : 1.188000 sec 
+CRC OK A510A8 A510A8 0.004000 sec
+[OK] Download 
+jump_to_fw 
+jump finished

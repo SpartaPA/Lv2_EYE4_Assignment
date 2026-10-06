@@ -1,0 +1,5 @@
+--- Miniterm on /dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00  115200,8,N,1 ---
+--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H ---
+STATE DISARMED MODE=DRY ARMED=0 GOAL=0,0 POS=3078,4096 VEL=0,0 TORQUE=1,1 AGE_MS=13 T_MS=1174310
+
+--- exit ---

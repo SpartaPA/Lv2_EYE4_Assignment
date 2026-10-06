@@ -1,0 +1,18 @@
+opencr_ld ver 1.0.4
+opencr_ld_main 
+>>
+file name : /home/pa44/pa-opencr-build/build/tracking_controller/tracking_controller.ino.bin 
+file size : 75 KB
+Open port OK
+Clear Buffer Start
+Clear Buffer End
+Board Name : OpenCR R1.0
+Board Ver  : 0x17020800
+Board Rev  : 0x00000000
+>>
+flash_erase : 0 : 1.065000 sec
+flash_write : 0 : 1.043000 sec 
+CRC OK 7763FC 7763FC 0.002000 sec
+[OK] Download 
+jump_to_fw 
+jump finished
