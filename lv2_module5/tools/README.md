@@ -5,7 +5,7 @@ RealSense 영상에서 파란색 목표(퍽)를 HSV 색상으로 찾아, 화면 
 | 위치 | 역할 |
 |---|---|
 | `ros2_ws/src/realsense_tracker/realsense_tracker/detector.py` | 검출 알고리즘 (ROS·카메라와 무관) — 노드와 도구가 함께 사용 |
-| `ros2_ws/src/realsense_tracker/realsense_tracker/perception_node.py` | ROS 2 인지 노드 — `/perception/target` 발행 |
+| `ros2_ws/src/realsense_tracker/realsense_tracker/perception_node.py` | ROS 2 인지 노드 — `/target` 발행 |
 | `ros2_ws/src/realsense_tracker/config/tracker.yaml` | 인지 파라미터 (`perception_node` 항목) |
 | `config/camera.yaml` | 카메라 해상도·fps (도구에서 사용) |
 | `tools/hsv_tuning.py` | HSV 범위 튜너 (트랙바) → `tracker.yaml`에 저장 |
@@ -16,7 +16,7 @@ RealSense 영상에서 파란색 목표(퍽)를 HSV 색상으로 찾아, 화면 
 
 ---
 
-## 1. `/perception/target` 메시지 약속
+## 1. `/target` 메시지 약속 (발제문 지정 — 이름·형식 임의 변경 금지)
 
 `geometry_msgs/msg/PointStamped`
 

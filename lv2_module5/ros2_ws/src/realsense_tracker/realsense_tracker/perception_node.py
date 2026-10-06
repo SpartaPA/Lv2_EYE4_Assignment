@@ -1,10 +1,10 @@
-"""인지 노드 (담당: 인지) — 컬러(+깊이) 영상에서 파란색 목표를 찾아 /perception/target 발행
+"""인지 노드 (담당: 인지) — 컬러(+깊이) 영상에서 파란색 목표를 찾아 /target 발행
 
 구독
   /camera/color/image_raw   sensor_msgs/Image  (bgr8 또는 rgb8)
   /camera/depth/image_raw   sensor_msgs/Image  (16UC1 또는 32FC1, 컬러에 정렬된 깊이) — use_depth: true일 때만
 발행
-  /perception/target        geometry_msgs/PointStamped
+  /target                   geometry_msgs/PointStamped  (발제문 지정 — 이름·형식 임의 변경 금지)
       point.x = ex  화면 중심 기준 가로 어긋남 (−1 ~ +1, 오른쪽이 +)
       point.y = ey  화면 중심 기준 세로 어긋남 (−1 ~ +1, 아래쪽이 +)
       point.z = z   목표 넓이 ÷ 화면 넓이 (검출되면 항상 0보다 큼)
@@ -81,7 +81,7 @@ class PerceptionNode(Node):
         self.last_found = None          # 검출 상태가 바뀔 때만 로그를 남기기 위함
         self.warned_size = False
 
-        self.pub = self.create_publisher(PointStamped, "/perception/target", 10)
+        self.pub = self.create_publisher(PointStamped, "/target", 10)
         self.debug_pub = (self.create_publisher(Image, "/perception/debug_image", 1)
                           if params["publish_debug_image"] else None)
 

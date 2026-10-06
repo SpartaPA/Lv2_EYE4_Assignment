@@ -10,7 +10,7 @@ perception_node:
     blur_ksize: 5                 # 가우시안 블러 크기 (홀수, 1이면 블러 안 함)
     morph_ksize: 5                # 잡음 제거(열기/닫기) 크기 (1이면 안 함)
 
-    # 깊이 (거리는 /perception/target에 들어가지 않고 확인 화면·로그에만 표시)
+    # 깊이 (거리는 /target에 들어가지 않고 확인 화면·로그에만 표시)
     use_depth: false              # true면 /camera/depth/image_raw(컬러에 정렬된 깊이)도 구독
     depth_unit_m: 0.001           # 16UC1 깊이 값 1이 몇 m인지 (RealSense 기본 1mm)
     depth_min_valid_ratio: 0.5    # 목표 영역에서 깊이가 측정된 비율이 이보다 낮으면 거리를 비움
