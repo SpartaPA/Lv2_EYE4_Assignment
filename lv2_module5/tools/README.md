@@ -110,9 +110,10 @@ ros2 run realsense_tracker perception_node --ros-args \
 | `target_reliable` | false | `/target` 발행 QoS (false = best effort, 위 설명) |
 | `image_reliable` | true | 영상 구독 QoS (true = reliable, 위 설명) |
 
-## 4. 도구 (노트북, ROS 없이 RealSense 직접 사용)
+## 4. 도구 (HSV 튜너·장면 캡처)
 
-RealSense wrapper가 카메라를 쓰고 있으면 도구가 카메라를 열 수 없습니다. (카메라는 한 프로그램만 사용 가능)
+RealSense를 직접 여는 방식(`hsv_tuning.py`, `image_capture.py` 기본값)은 wrapper가 켜져 있으면 쓸 수 없습니다. (카메라는 한 프로그램만 사용 가능)
+`image_capture.py --source ros`는 wrapper 토픽에서 받으므로 wrapper를 켜 둔 채로 씁니다.
 
 ### 설치 (한 번만)
 
@@ -143,9 +144,14 @@ python tools/hsv_tuning.py
 ### 4-2. 장면별 검출 결과 저장 (`image_capture.py`)
 
 ```bash
-python tools/image_capture.py              # 화면이 있는 노트북
-python tools/image_capture.py --headless   # 화면 없는 SSH (터미널에 n/e/o/q 입력 후 Enter)
+# 권장: RealSense ROS wrapper 토픽에서 받기 (실제 파이프라인과 같은 입력, ROS 환경의 시스템 파이썬, wrapper 실행 중)
+python3 tools/image_capture.py --source ros
+# 또는: RealSense를 직접 열기 (도구용 .venv, wrapper가 꺼져 있어야 함)
+python tools/image_capture.py
+# 화면 없이 (SSH 등): 뒤에 --headless 를 붙이고 터미널에 n/e/o/q 입력 후 Enter
 ```
+
+- 저장 결과는 같은 `detect()`와 `tracker.yaml` 설정으로 계산하므로, 같은 영상이면 인지 노드의 `/target` 값과 같습니다.
 
 | 키 | 장면 |
 |---|---|

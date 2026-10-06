@@ -6,10 +6,10 @@
   results/logs/perception/log.csv                             저장할 때마다 한 줄씩 기록
 
 실행 (lv2_module5 폴더에서):
-  python tools/image_capture.py              # 노트북(GUI)
-  python tools/image_capture.py --headless   # SSH(라즈베리파이): 터미널에 n/e/o/q 입력 후 Enter
+  python3 tools/image_capture.py --source ros   # RealSense ROS wrapper 토픽에서 받음 (실제 파이프라인과 같은 입력, ROS 환경)
+  python tools/image_capture.py                 # RealSense를 직접 엶 (도구용 .venv, wrapper가 꺼져 있어야 함)
+  ... --headless                                # 화면 없이: 터미널에 n/e/o/q 입력 후 Enter
 설정: ros2_ws/src/realsense_tracker/config/tracker.yaml (perception_node), config/camera.yaml
-※ RealSense ROS wrapper(realsense2_camera)가 카메라를 쓰고 있으면 열리지 않음 (카메라는 한 프로그램만 사용 가능)
 """
 import argparse
 import csv
@@ -19,7 +19,7 @@ import time
 
 import cv2
 
-from common import (PARAMS_PATH, RESULTS, RealSenseCamera, cfg_from_params, detect, draw,
+from common import (PARAMS_PATH, RESULTS, RealSenseCamera, RosCamera, cfg_from_params, detect, draw,
                     load_camera, load_params)
 
 OUT_IMG = str(RESULTS / "images" / "detection")
@@ -58,10 +58,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--params", default=str(PARAMS_PATH), help="perception_node 파라미터 파일 (tracker.yaml)")
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--source", choices=["realsense", "ros"], default="realsense",
+                    help="realsense = 카메라 직접 (기본), ros = RealSense ROS wrapper 토픽")
     args = ap.parse_args()
 
     cfg = cfg_from_params(load_params(args.params))
-    cam = RealSenseCamera(load_camera())
+    cam = (RosCamera if args.source == "ros" else RealSenseCamera)(load_camera())
+    print(f"입력: {'RealSense ROS wrapper 토픽' if args.source == 'ros' else 'RealSense 직접 (pyrealsense2)'}")
 
     while True:
         if args.headless:
