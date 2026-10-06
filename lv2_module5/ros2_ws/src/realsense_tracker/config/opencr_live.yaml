@@ -13,7 +13,7 @@ opencr_node:
     enable_live_hardware: true      # 실제 모터 출력에 대한 명시적 확인. 이 값이 없으면 LIVE 시작 거부
     # 2026-10-06 docs/hardware.md에 기록된 실제 OpenCR 경로. 장비를 바꾸면 ls -l /dev/serial/by-id/ 로 다시 확인
     port: "/dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00"
-    usb_serial_baudrate: 115200     # Pi ↔ OpenCR USB (DYNAMIXEL 버스 1 Mbps와 별개)
+    usb_serial_baudrate: 115200     # 시리얼 open에 사용. 펌웨어 Serial.begin(115200)과 같아야 함 (DYNAMIXEL 버스 1 Mbps와 별개)
     # control_node 명령의 최대 나이(초). Pi 내부 DDS 전달 + 실행 지연 여유. 펌웨어 명령 timeout(0.3초)보다 작아야 함.
     # Pi 부하(카메라·인지 동시 실행)로 거부·ROS_COMMAND_TIMEOUT이 나면 원인을 기록하고, 값을 바꾸면 이유를 report에 기록한다.
     command_max_age_sec: 0.15

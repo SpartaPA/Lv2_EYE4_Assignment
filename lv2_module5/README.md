@@ -85,7 +85,7 @@ DYNAMIXEL 2개(Pan = 좌우, Tilt = 상하)를 P 제어하는 **Pan/Tilt 2축 �
 | OS | Ubuntu Server 64-bit (arm64). 발제문에 24.04 / 26.04 표기가 섞여 있음 | TODO: 실제 버전 `lsb_release -a` 기록 |
 | ROS 2 | Lyrical (`/opt/ros/lyrical`) | 사용 기록 있음 (`results/logs/control/*` 시험이 Pi에서 실행됨) |
 | RMW | 기본값(Fast DDS) | TODO: `echo $RMW_IMPLEMENTATION` 결과 기록 |
-| ROS_DOMAIN_ID | 팀 고정값 1개 사용 (예: 42) | TODO: 실제 값 기록 |
+| ROS_DOMAIN_ID | 기본값(미설정 = 0)으로 동작. 같은 네트워크의 다른 장비와 분리가 필요할 때만 설정 | TODO: 실제 사용 값 기록 |
 | 연결 | D435 → Pi USB 3 포트, OpenCR → Pi USB | D435의 Pi 연결 실행 기록은 아직 없음 |
 
 ## 5. RealSense D435
@@ -229,7 +229,7 @@ PTY(가상 시리얼)로 실제 펌웨어 코드를 돌리는 시험: [firmware/
 # 모든 터미널에서 (예: ~/.bashrc에 추가)
 source /opt/ros/lyrical/setup.bash
 source ~/git/Lv2_EYE4_Assignment/lv2_module5/ros2_ws/install/setup.bash
-export ROS_DOMAIN_ID=42                          # 팀 고정값 — 터미널마다 다르면 노드가 서로 안 보임
+# export ROS_DOMAIN_ID=<번호>                    # 필요할 때만. 설정한다면 모든 터미널에서 같은 값 (다르면 노드가 서로 안 보임)
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST   # 같은 네트워크의 다른 팀 노드·명령과 섞이지 않게 Pi 내부로 제한
 echo $ROS_DOMAIN_ID $RMW_IMPLEMENTATION          # 기록용 (RMW 비어 있으면 기본 Fast DDS)
 

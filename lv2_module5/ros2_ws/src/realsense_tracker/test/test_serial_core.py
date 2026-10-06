@@ -1,5 +1,5 @@
 import unittest
-from realsense_tracker.serial_core import SerialBridge,check_mode,parse_state
+from realsense_tracker.serial_core import SerialBridge,check_mode
 
 
 def state(name='BOOT',armed=0,goal='0,0',vel='0,0',torque='0,0',mode='DRY',age=0,t=10):

@@ -11,7 +11,11 @@ from rclpy.node import Node
 from geometry_msgs.msg import PointStamped
 from std_msgs.msg import String
 from realsense_tracker_interfaces.msg import PanTiltCommand
+from ament_index_python.packages import get_package_share_directory
 from .control_node import TARGET_QOS
+
+# control_node는 모의 시험 고정값 파일(control_dry.yaml)로 실행한다 — 기대 명령(±0.04 rad/s)의 근거를 한 곳에 둠
+DRY_PARAMS=str(Path(get_package_share_directory('realsense_tracker'))/'config'/'control_dry.yaml')
 
 
 def main():
@@ -42,7 +46,7 @@ def main():
             process=subprocess.Popen([sys.executable,'-m',module,*extra],stdout=stream,stderr=subprocess.STDOUT)
             children.append(process);return process
         control=child('realsense_tracker.control_node','control_node.log',
-                      ['--ros-args','-p','pan_direction:=-1','-p','tilt_direction:=1'])
+                      ['--ros-args','--params-file',DRY_PARAMS])
         bridge=child('realsense_tracker.opencr_node','opencr_node.log',
                      ['--ros-args','-p','dry_run:=true','-p',f'csv_path:={out / "commands.csv"}'])
         deadline=time.monotonic()+20

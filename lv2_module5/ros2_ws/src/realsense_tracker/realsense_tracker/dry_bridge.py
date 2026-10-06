@@ -9,23 +9,24 @@ import csv
 import json
 import math
 import time
-import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from realsense_tracker_interfaces.msg import PanTiltCommand
 
 from .control_core import MAX_VELOCITY_RAD_S
+from .serial_core import SerialBridge
 
-COMMAND_AGE_SEC = 0.15  # serial_core.SerialBridge.COMMAND_AGE 기본값과 같은 규칙
+COMMAND_AGE_SEC = SerialBridge.COMMAND_AGE  # 실제 시리얼 bridge와 같은 명령 나이 규칙
 
 class DryBridge(Node):
     def __init__(self):
         super().__init__('opencr_node')
         self.declare_parameter('dry_run',True)
         if self.get_parameter('dry_run').value is not True:
-            raise RuntimeError('Hardware mode is not implemented: dry_run must remain true')
+            raise RuntimeError('DRY sink requires dry_run=true; motor output uses serial_mode=true with opencr_live.yaml')
         self.declare_parameter('csv_path','')
         self.last_received=None;self.last_stamp=None;self.goal=(0.0,0.0)
+        self.timed_out=False  # COMMAND_TIMEOUT은 정상→timeout 전이 때 한 번만 기록 (20 Hz 반복 기록 방지)
         self.history=[];self.file=None;self.writer=None
         self.status_pub=self.create_publisher(String,'/opencr/dry_status',1)
         path=self.get_parameter('csv_path').value
@@ -54,12 +55,14 @@ class DryBridge(Node):
         ordered=self.last_stamp is None or stamp>self.last_stamp
         if not all(math.isfinite(v) and abs(v)<=MAX_VELOCITY_RAD_S+1e-8 for v in (p,t)) or not 0<=age<=COMMAND_AGE_SEC or not ordered:
             self.record(True,0.0,0.0,'REJECTED_COMMAND');return
-        self.last_received=time.monotonic();self.last_stamp=stamp
+        self.last_received=time.monotonic();self.last_stamp=stamp;self.timed_out=False
         if msg.stop:p=t=0.0
         self.record(bool(msg.stop),p,t,'STOP' if msg.stop else 'ACCEPTED')
 
     def watchdog(self):
-        if self.last_received is None or time.monotonic()-self.last_received>=COMMAND_AGE_SEC:
+        expired=self.last_received is None or time.monotonic()-self.last_received>=COMMAND_AGE_SEC
+        if expired and not self.timed_out:
+            self.timed_out=True
             self.record(True,0.0,0.0,'COMMAND_TIMEOUT')
 
     def destroy_node(self):

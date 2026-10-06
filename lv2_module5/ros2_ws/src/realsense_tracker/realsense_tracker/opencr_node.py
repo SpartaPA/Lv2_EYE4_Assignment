@@ -35,7 +35,7 @@ from realsense_tracker_interfaces.msg import PanTiltCommand
 from .dry_bridge import DryBridge
 from .serial_core import PosixSerial, SerialBridge, check_mode
 
-USB_BAUDRATE = 115200  # 펌웨어 Serial.begin(115200)과 같아야 함 (DYNAMIXEL 버스 1 Mbps와 별개)
+USB_BAUDRATE = 115200  # 기본값. 펌웨어 Serial.begin(115200)과 같아야 함 (DYNAMIXEL 버스 1 Mbps와 별개)
 
 
 class SerialNode(Node):
@@ -56,8 +56,6 @@ class SerialNode(Node):
         if get('serial_mode') is not True:
             raise RuntimeError('SerialNode requires explicit serial_mode=true')
         mode = check_mode(get('dry_run'), get('expected_board_mode'), get('enable_live_hardware'))
-        if get('usb_serial_baudrate') != USB_BAUDRATE:
-            raise RuntimeError(f'USB baud must be {USB_BAUDRATE}')
         if not get('port'):
             raise RuntimeError('Explicit serial port required (/dev/serial/by-id/...)')
         self.file = None
@@ -74,7 +72,7 @@ class SerialNode(Node):
             self.prepare_service = self.create_service(Trigger, '/opencr/prepare', self.prepare)
             self.arm_service = self.create_service(Trigger, '/opencr/arm', self.arm)
             self.disarm_service = self.create_service(Trigger, '/opencr/disarm', self.disarm)
-            self.transport = PosixSerial(get('port'))
+            self.transport = PosixSerial(get('port'), get('usb_serial_baudrate'))
             self.link = SerialBridge(self.transport, log=self.record, expected_mode=mode,
                                      command_age=float(get('command_max_age_sec')))
             self.timer = self.create_timer(.01, self.tick)

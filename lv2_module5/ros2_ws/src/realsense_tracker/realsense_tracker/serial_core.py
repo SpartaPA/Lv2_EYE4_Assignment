@@ -61,9 +61,11 @@ def check_mode(dry_run, expected_board_mode, enable_live_hardware):
 
 
 class PosixSerial:
-    """Linux/Pi transport: nonblocking 115200 8N1 with exclusive ownership."""
-    def __init__(self, path):
+    """Linux/Pi transport: nonblocking 8N1 with exclusive ownership. baudrate = opencr_node usb_serial_baudrate."""
+    def __init__(self, path, baudrate=115200):
         if termios is None:raise OSError('POSIX serial (termios) is required; run on Linux/Raspberry Pi')
+        speed = getattr(termios, f'B{int(baudrate)}', None)
+        if speed is None:raise ValueError(f'Unsupported serial baudrate: {baudrate}')
         self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
         try:
             termios.tcgetattr(self.fd)
@@ -76,7 +78,7 @@ class PosixSerial:
             attrs[2] &= ~(termios.PARENB | termios.CSTOPB | termios.CSIZE)
             attrs[2] |= termios.CS8
             if hasattr(termios, 'CRTSCTS'):attrs[2] &= ~termios.CRTSCTS
-            attrs[4] = attrs[5] = termios.B115200
+            attrs[4] = attrs[5] = speed
             termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
             termios.tcflush(self.fd, termios.TCIOFLUSH)
         except Exception:
