@@ -1,0 +1,11 @@
+[INFO] [1791272862.501080006] [mock_dry_sink]: DRY_ONLY: serial port is never opened; no ARM or VEL sent
+PASS 1 center
+PASS 2 x +0.4 -> pan -0.04
+PASS 3 x -0.4 -> pan +0.04
+PASS 4 y +0.4 -> tilt +0.04
+PASS 5 y -0.4 -> tilt -0.04
+PASS 6 z=0 -> LOST and zero
+PASS recovery requires three fresh frames
+PASS 7 publisher silence -> LOST and zero
+PASS dry sink command silence -> zero
+ALL SEVEN ROS MOCK CHECKS PASSED; SERIAL_OPENED=FALSE

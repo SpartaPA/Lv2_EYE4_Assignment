@@ -1,0 +1,18 @@
+Starting >>> realsense_tracker_interfaces
+--- stderr: realsense_tracker_interfaces
+CMake Deprecation Warning at CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+---
+Finished <<< realsense_tracker_interfaces [29.7s]
+Starting >>> control_mock_validation
+Finished <<< control_mock_validation [6.34s]
+
+Summary: 2 packages finished [36.9s]
+  1 package had stderr output: realsense_tracker_interfaces
