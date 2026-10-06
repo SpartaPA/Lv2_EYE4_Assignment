@@ -121,7 +121,7 @@ Thumbs.db
 # Do not globally ignore:
 # - *.log
 # - *.csv
-# - *.png, *.jpg, *.jpeg
+*.png, *.jpg, *.jpeg
 # - results/images/
 # - results/plots/
 # - results/logs/
