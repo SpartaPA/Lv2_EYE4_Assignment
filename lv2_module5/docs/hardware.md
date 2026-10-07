@@ -1,7 +1,11 @@
+# 하드웨어 기록 (장비 실측)
+
+담당: 제어(조민혁). 이 문서의 값은 실제 장비에서 확인한 것만 적는다. 펌웨어 상수 사본: [`../config/hardware.yaml`](../config/hardware.yaml).
+
 ## Pan/Tilt DYNAMIXEL 식별 결과
 
 - 확인일: 2026-10-06
-- 확인 방법: OpenCR의 `dxl_discovery` 펌웨어로 스캔
+- 확인 방법: OpenCR의 `dxl_discovery` 펌웨어로 스캔 (`firmware/opencr/commissioning/dxl_discovery/`)
 - 카메라: RealSense D435, 기구에 장착됨
 - 축과 ID의 대응: 실제 장착 상태를 기준으로 담당자가 확인
 
@@ -90,3 +94,20 @@ C++ 표준 라이브러리의 이름 충돌을 해결하기 위해 다음 패치
 Tilt의 정상 정지는 목표 속도 0과 토크 유지를 사용한다.
 토크 해제 전에는 카메라를 기계적으로 지지해야 한다.
 전원 상실 또는 하드웨어 고장 시의 낙하는 소프트웨어만으로 방지할 수 없다.
+
+### 2축 통합 펌웨어 LIVE 단일 명령 시험 — 2026-10-06
+
+`tracking_controller_2axis` (ENABLE_MOTOR_OUTPUT=1, MODE=LIVE)에서 zero / pan-left / pan-right / tilt-up / tilt-down / both 6개 케이스 성공.
+각 케이스는 VEL 1회 후 명령을 끊어 300 ms 보드 명령 timeout → 두 축 0 + DISARM(토크 유지)을 관찰했다.
+최초 zero 시도의 FAULT 원인은 미확정이다 (`zero_retry_notes.md`).
+근거: [test_notes.md](../results/logs/opencr/integration_live_20261006_141057/test_notes.md)
+
+### 아직 확인하지 않은 하드웨어 항목
+
+| 항목 | 상태 |
+|---|---|
+| ROS(control_node → opencr_node LIVE) 경유 실제 구동 | 미시험 |
+| 카메라 장착 상태의 폐루프 부호 (영상 오차가 줄어드는지, direction Pan −1 / Tilt +1) | 미시험 |
+| 기구 안전 회전 범위 (펌웨어 경계 ±80/±100 counts는 bench 값) | 미확정 |
+| 위치 경계 정지, 실제 정지 지연, 모터 버스 단절, Bus_Watchdog 실동작 | 미시험 |
+| D435를 Raspberry Pi USB 3에 연결한 상태의 USB 속도·FPS | 미기록 (기존 기록은 인지 담당 노트북) |

@@ -1,4 +1,25 @@
-// Candidate integrated controller. Physical limits/stopping require bench validation.
+// tracking_controller_2axis — OpenCR Pan/Tilt 최종 런타임 펌웨어 (담당: 제어)
+//
+// 입력: Raspberry Pi opencr_node(serial_core.py)의 USB 시리얼 ASCII 줄 명령, 115200 8N1, LF 종료, 최대 63자
+//   STATUS | CHECK | HOLD | ARM | VEL <pan_rad_s> <tilt_rad_s> | STOP | DISARM | SUPPORTED_OFF
+// 출력: STATE/ACK/ERR/EVENT/FAULT 줄 + 두 XM430-W350 (Pan ID 11, Tilt ID 12, 1 Mbps, Protocol 2.0, Velocity Mode)
+//
+// 이 계층의 책임 (Pi의 control_node는 P제어·방향·속도 상한·deadband·상태·target timeout 담당)
+//   - 단위 변환: rad/s → Goal_Velocity 원시 단위(0.229 rpm). 부호는 이미 모터 원시 부호 (방향 재적용 없음)
+//   - 속도 상한: |VEL| > MAX_RAD_S(0.05) → ERR RANGE, 두 값 중 하나라도 잘못되면 둘 다 거부
+//   - 각도 경계: 실제 엔코더 위치 기준. 중립 ±STOP_COUNTS에서 바깥 방향 명령 → EVENT LIMIT + DISARM,
+//               ±OUTER_COUNTS 초과 → FAULT (bench 값, 실제 기구 범위 확정 TODO — config/hardware.yaml)
+//   - 명령 timeout: ARM 중 마지막 유효 명령 후 COMMAND_MS(300 ms) → 두 축 0 + DISARM (토크 유지)
+//               → control_node·opencr_node·USB 어느 쪽이 멈춰도 마지막 속도로 계속 돌지 않는다
+//   - 모터 Bus_Watchdog: BUS_TICKS(10 × 20 ms = 200 ms) 동안 버스 패킷이 없으면 모터 스스로 정지 (보드 멈춤 대비)
+//   - 고장 처리: 읽기·쓰기 실패, 하드웨어 오류, 위치 급변, 예상 밖 속도, 정지 미확인 → FAULT 래치,
+//               두 축 0 쓰기 1회 후 버스 통신 중단(watchdog 만료 유도). 자동 복구 없음 — reset + CHECK 필요
+//
+// DRY / LIVE (컴파일 플래그, 기본 DRY):
+//   ENABLE_MOTOR_OUTPUT=0 (기본) → MODE=DRY: 모터 버스를 전혀 호출하지 않음, 피드백은 모의 값
+//   ENABLE_MOTOR_OUTPUT=1        → MODE=LIVE: 실제 구동. arduino-cli --build-property로만 켠다 (README)
+// 정상 정지(STOP/DISARM/timeout)는 영속도 + 토크 유지다 (Tilt 낙하 방지). 토크 해제는 SUPPORTED_OFF만.
+// 아래 상수의 실측 근거와 사본: lv2_module5/config/hardware.yaml (펌웨어 상수를 바꾸면 함께 수정)
 #include <Arduino.h>
 #ifdef min
 #undef min
@@ -23,8 +44,8 @@ extern "C" {
 #endif
 
 DynamixelWorkbench dxl;
-const uint8_t IDS[2] = {11, 12};
-const uint32_t COMMAND_MS = 300, POLL_MS = 20, BUS_TICKS = 10;
+const uint8_t IDS[2] = {11, 12};  // {Pan, Tilt} — dxl_discovery 스캔으로 확인
+const uint32_t COMMAND_MS = 300, POLL_MS = 20, BUS_TICKS = 10;  // 명령 timeout, 피드백 주기, 모터 watchdog(×20 ms)
 const float MAX_RAD_S = 0.05f;
 const float RAD_S_PER_UNIT = 0.229f * 6.28318530718f / 60.0f;
 // Velocity input is already motor-native sign: positive pan left, tilt down.

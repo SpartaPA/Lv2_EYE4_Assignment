@@ -1,0 +1,23 @@
+test_deadband_clamp_and_initial_state (test_control_core.CoreTests.test_deadband_clamp_and_initial_state) ... ok
+test_recovery_after_silence (test_control_core.CoreTests.test_recovery_after_silence) ... ok
+test_seven_inputs (test_control_core.CoreTests.test_seven_inputs) ... ok
+test_source_stamp_expires_even_if_receipt_recent (test_control_core.CoreTests.test_source_stamp_expires_even_if_receipt_recent) ... ok
+test_stale_duplicate_invalid_and_future (test_control_core.CoreTests.test_stale_duplicate_invalid_and_future) ... ok
+test_board_timeout_and_fault_latch (test_serial_core.SerialTests.test_board_timeout_and_fault_latch) ... ok
+test_close_disarms_and_closes (test_serial_core.SerialTests.test_close_disarms_and_closes) ... ok
+test_command_silence_disarms_without_rearm (test_serial_core.SerialTests.test_command_silence_disarms_without_rearm) ... ok
+test_disconnect_latches_without_reconnect (test_serial_core.SerialTests.test_disconnect_latches_without_reconnect) ... ok
+test_explicit_prepare_arm_and_no_sign_flip (test_serial_core.SerialTests.test_explicit_prepare_arm_and_no_sign_flip) ... ok
+test_fragmented_state_and_malformed_response (test_serial_core.SerialTests.test_fragmented_state_and_malformed_response) ... ok
+test_invalid_commands_latch_when_armed (test_serial_core.SerialTests.test_invalid_commands_latch_when_armed) ... ok
+test_live_mode_refused_before_prepare (test_serial_core.SerialTests.test_live_mode_refused_before_prepare) ... ok
+test_missing_ack_is_not_retried (test_serial_core.SerialTests.test_missing_ack_is_not_retried) ... ok
+test_missing_arm_ack_no_vel_or_retry (test_serial_core.SerialTests.test_missing_arm_ack_no_vel_or_retry) ... ok
+test_non_boot_session_not_adopted (test_serial_core.SerialTests.test_non_boot_session_not_adopted) ... ok
+test_status_age_and_reboot (test_serial_core.SerialTests.test_status_age_and_reboot) ... ok
+test_stop_is_stop_not_torque_release (test_serial_core.SerialTests.test_stop_is_stop_not_torque_release) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.007s
+
+OK
