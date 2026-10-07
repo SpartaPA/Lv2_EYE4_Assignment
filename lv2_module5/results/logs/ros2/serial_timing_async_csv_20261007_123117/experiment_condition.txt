@@ -1,0 +1,8 @@
+Experiment: serial timing with asynchronous CSV logging enabled.
+Baseline commit: d489b99c1754b1146868a3057095585b55dc105c.
+Logging patch applied; controller and firmware unchanged.
+Board mode: DRY. Motors disconnected.
+Bridge command freshness limit: 0.15 seconds.
+Sequence after ARM: center 30 s, right 120 s, silence 1200 s, recovery 20 s.
+Observer starts before ARM.
+Normal shutdown: disarm while controller remains running; stop bridge before controller.

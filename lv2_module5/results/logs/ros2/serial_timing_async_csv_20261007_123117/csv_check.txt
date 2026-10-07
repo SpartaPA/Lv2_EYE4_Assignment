@@ -1,0 +1,5 @@
+Header: ['monotonic_sec', 'direction', 'line']
+Data rows: 211201
+Rows with unexpected column count: 0
+First row: ['15503.867611283', 'TX', 'STATUS']
+Last row: ['18360.348100429', 'TX', 'DISARM']

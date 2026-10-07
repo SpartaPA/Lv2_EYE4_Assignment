@@ -1,0 +1,2 @@
+{"phase": "READY", "reason": "", "serial_opened": true, "expected_mode": "DRY", "board": {"state": "DISARMED", "mode": "DRY", "armed": 0, "goal": [0, 0], "pos": [3078, 4096], "vel": [0, 0], "torque": [1, 1], "age_ms": 11, "t_ms": 2880744}, "board_receipt_age_sec": 0.009599863999028457, "logging": {"enabled": true, "accepted": 208736, "written": 208736, "dropped": 0, "error": "", "worker_alive": true, "closing": false}}
+---

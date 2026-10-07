@@ -1,0 +1,5 @@
+A message was lost!!!
+	total count change:1
+	total count: 1---
+{"phase": "ARMED", "reason": "", "serial_opened": true, "expected_mode": "DRY", "board": {"state": "ARMED", "mode": "DRY", "armed": 1, "goal": [0, 0], "pos": [3078, 4096], "vel": [0, 0], "torque": [1, 1], "age_ms": 1, "t_ms": 2772994}, "board_receipt_age_sec": 0.00994654699752573, "logging": {"enabled": true, "accepted": 199540, "written": 199540, "dropped": 0, "error": "", "worker_alive": true, "closing": false}}
+---
