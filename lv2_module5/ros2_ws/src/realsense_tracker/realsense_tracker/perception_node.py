@@ -178,7 +178,7 @@ class PerceptionNode(Node):
                     scale = 1.0                        # 32FC1은 이미 m 단위
                 if depth.shape != frame.shape[:2]:     # 컬러에 정렬되지 않은 깊이는 쓸 수 없음
                     if not self.warned_size:
-                        self.get_logger().warn(
+                        self.get_logger().warning(
                             f"깊이 {depth.shape}와 컬러 {frame.shape[:2]} 크기가 달라 거리 계산을 건너뜀 "
                             "(깊이를 컬러에 정렬해서 발행해야 함)")
                         self.warned_size = True

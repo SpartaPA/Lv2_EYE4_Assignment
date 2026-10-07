@@ -1,5 +1,6 @@
 import unittest
 from realsense_tracker.serial_core import SerialBridge,check_mode
+from realsense_tracker.control_core import MAX_VELOCITY_RAD_S
 
 
 def state(name='BOOT',armed=0,goal='0,0',vel='0,0',torque='0,0',mode='DRY',age=0,t=10):
@@ -54,7 +55,7 @@ class SerialTests(unittest.TestCase):
         self.line('STATE broken');self.assertEqual(self.bridge.reason,'MALFORMED_STATE')
     def test_invalid_commands_latch_when_armed(self):
         for args in [(float('nan'),0,2_000_000_000,2_000_000_000),
-                     (.06,0,2_000_000_000,2_000_000_000),
+                     (MAX_VELOCITY_RAD_S+.01,0,2_000_000_000,2_000_000_000),
                      (.04,0,1_000_000_000,1_000_000_000),
                      (.04,0,2_000_000_000,2_200_000_000),
                      (.04,0,2_000_000_000,1_900_000_000)]:
@@ -62,8 +63,20 @@ class SerialTests(unittest.TestCase):
             self.assertFalse(self.command(p,t,stamp=stamp,now=now))
             self.assertEqual(self.bridge.phase,'FAULT');self.assertFalse(self.bridge.arm()[0])
     def test_missing_ack_is_not_retried(self):
-        self.line(state(mode=self.mode));self.bridge.prepare();self.now+=.7;self.bridge.tick()
+        self.line(state(mode=self.mode));self.bridge.prepare();self.now+=2.1;self.bridge.tick()
         self.assertEqual(self.bridge.phase,'FAULT');self.assertEqual(self.io.tx.count('CHECK'),1)
+    def test_slow_live_check_reaches_ready(self):
+        # Measured LIVE timing: CHECK blocks ~1.25 s (no STATE), HOLD ack ~0.15 s, STOPPED ~0.09 s later.
+        self.setUp('LIVE');self.line(state(mode='LIVE'));self.bridge.prepare()
+        for _ in range(125):self.now+=.01;self.bridge.tick()
+        self.assertEqual(self.bridge.phase,'CHECKING')
+        self.line('CHECK_OK BOTH_TORQUES_OFF');self.assertEqual(self.bridge.phase,'HOLDING')
+        for _ in range(15):self.now+=.01;self.bridge.tick()
+        self.line('ACK HOLD ZERO_REQUESTED')
+        for _ in range(9):self.now+=.01;self.bridge.tick()
+        self.line('EVENT STOPPED TORQUE_RETAINED')
+        self.line(state('DISARMED',torque='1,1',mode='LIVE',t=2000))
+        self.assertEqual(self.bridge.phase,'READY');self.assertEqual(self.bridge.reason,'')
     def test_missing_arm_ack_no_vel_or_retry(self):
         self.prepared();self.command();self.bridge.arm();self.now+=.21
         self.command(stamp=2_000_000_000,now=2_000_000_000);self.bridge.tick()
@@ -106,6 +119,23 @@ class SerialTests(unittest.TestCase):
         self.assertEqual(self.io.tx[-1],'STOP')
         self.assertTrue(self.bridge.stopping)
         self.assertEqual(self.io.tx.count('STOP'),1)
+    def test_slow_stop_keeps_board_timer_alive_then_resumes(self):
+        # Field 2026-10-07: a stop that rang for ~0.31 s let the board's 300 ms command timeout fire.
+        self.armed();self.line('ACK VEL')
+        stamp=2_000_000_000
+        self.command(stop=True,stamp=stamp,now=stamp);self.bridge.tick()
+        self.assertEqual(self.io.tx[-1],'STOP');self.line('ACK STOP ZERO_REQUESTED')
+        for _ in range(4):   # 0.2 s (> STOP_KEEPALIVE) of fresh 20 Hz stop commands while the board still reports STOPPING
+            self.now+=.05;stamp+=50_000_000
+            self.command(stop=True,stamp=stamp,now=stamp);self.bridge.tick()
+            self.line(state('STOPPING',1,torque='1,1',mode=self.mode))
+        self.assertEqual(self.io.tx.count('STOP'),2);self.assertEqual(self.io.tx[-1],'STOP')
+        self.line('ACK STOP ZERO_REQUESTED');self.assertEqual(self.bridge.phase,'ARMED')
+        self.now+=.05;stamp+=50_000_000
+        self.command(-.04,0,stamp=stamp,now=stamp);self.bridge.tick()
+        self.line(state('ARMED',1,torque='1,1',mode=self.mode))
+        self.assertFalse(self.bridge.stopping);self.assertEqual(self.io.tx[-1],'VEL -0.040000 0.000000')
+        self.assertEqual(self.io.tx.count('STOP'),2)
     def test_status_confirmation_required_before_resuming_vel(self):
         self.armed();self.line('ACK VEL')
         self.command(stop=True,stamp=2_000_000_000,now=2_000_000_000)

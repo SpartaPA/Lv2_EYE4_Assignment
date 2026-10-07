@@ -120,6 +120,7 @@ class SerialBridge:
     ACK_TIMEOUT = 0.20     # 명령 1건의 ACK 대기
     STATUS_PERIOD = 0.10   # STATUS 조회 주기 (정지 확인 중에는 0.02초)
     STATUS_MAX_AGE = 0.40  # 이 시간 동안 STATE가 안 오면 FAULT
+    STOP_KEEPALIVE = 0.15  # 정지가 느릴 때 STOP 재전송 간격 (펌웨어 명령 timeout 300 ms의 절반)
 
     def __init__(self, transport, log=None, clock=time.monotonic, expected_mode='DRY', command_age=None):
         if expected_mode not in BOARD_MODES:raise ValueError('expected_mode must be DRY or LIVE')
@@ -133,7 +134,7 @@ class SerialBridge:
         self.pending=None;self.buffer=b'';self.last_status=None;self.last_poll=0.0
         self.last_stamp=None;self.latest=None;self.sequence=0;self.sent_sequence=0
         self.stopping=False;self.previous_goal=(0,0);self.closed=False
-        self.phase_deadline=None
+        self.phase_deadline=None;self.last_command_tx=0.0
         self.send('STATUS', 'STATUS')
 
     def emit(self, direction, line):self.log(self.clock(), direction, line)
@@ -147,6 +148,7 @@ class SerialBridge:
         self.emit('TX',command)
         self.pending=(expected,self.clock()+(timeout or self.ACK_TIMEOUT))
         if expected=='STATUS':self.last_poll=self.clock()
+        if expected in ('ARM','VEL','STOP'):self.last_command_tx=self.clock()  # these refresh the board command timer
         return True
 
     def fail(self, reason, try_stop=True):
@@ -180,8 +182,9 @@ class SerialBridge:
     def prepare(self):
         """운영자 명시 요청: CHECK(모델·모드·중립 자세 확인) → HOLD(영속도로 토크 ON)."""
         if self.phase!='BOOT':return False,'Requires a fresh BOOT state; reset firmware first'
-        self.phase='CHECKING';self.phase_deadline=self.clock()+0.8
-        self.send('CHECK','CHECK',0.6);return True,'CHECK/HOLD requested; wait for READY status'
+        # LIVE CHECK blocks the board ~1.25 s (bus init + ping incl. Protocol 1.0 fallback); no STATE during it.
+        self.phase='CHECKING';self.phase_deadline=self.clock()+2.5
+        self.send('CHECK','CHECK',2.0);return True,'CHECK/HOLD requested; wait for READY status'
 
     def arm(self):
         if self.phase!='READY' or self.pending:return False,'Requires READY with no outstanding transaction'
@@ -252,6 +255,8 @@ class SerialBridge:
         if not self.pending:return
         expected=self.pending[0]
         if expected=='CHECK' and line=='CHECK_OK BOTH_TORQUES_OFF':
+            # CHECK_OK proves the board is responsive; restart the STATUS age clock paused during CHECKING.
+            self.last_status=self.clock()
             self.pending=None;self.phase='HOLDING';self.send('HOLD','HOLD');return
         if expected=='HOLD' and line=='ACK HOLD ZERO_REQUESTED':
             self.pending=None;self.phase='WAIT_HOLD';self.phase_deadline=self.clock()+0.65;return
@@ -282,7 +287,7 @@ class SerialBridge:
         if self.phase_deadline and now>=self.phase_deadline:self.fail('SESSION_TRANSITION_TIMEOUT');return
         if self.phase in ('ARMING','VERIFY_ARM','ARMED'):
             if not self.latest or now>=self.latest[3]:self.fail('ROS_COMMAND_TIMEOUT');return
-        if self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
+        if self.phase!='CHECKING' and self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
             self.fail('STATUS_TIMEOUT');return
         if self.pending:
             if now>=self.pending[1]:self.fail('RESPONSE_TIMEOUT: '+self.pending[0])
@@ -295,8 +300,13 @@ class SerialBridge:
             if now>=deadline:self.fail('ROS_COMMAND_TIMEOUT');return
             self.sent_sequence=sequence
             if self.stopping:
-                # Repeating STOP restarts the board's completion window.
-                # Poll STATUS above; never send VEL until completion is confirmed.
+                # Never send VEL until completion is confirmed (STATUS polled above).
+                # A STOP after the board finished would restart its completion window, so repeat STOP
+                # only while the board still reports STOPPING (firmware keeps stopAt/quiet then) and the
+                # board's 300 ms command timer would otherwise expire during a slow stop.
+                if (self.board and self.board['state']=='STOPPING'
+                        and now-self.last_command_tx>=self.STOP_KEEPALIVE):
+                    self.send('STOP','STOP')
                 return
             if stop:
                 self.stopping=True;self.send('STOP','STOP')
@@ -310,7 +320,7 @@ class SerialBridge:
             return
         if self.mode_verified and now-self.last_poll>=(0.02 if self.stopping else self.STATUS_PERIOD):
             self.send('STATUS','STATUS')
-        if self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
+        if self.phase!='CHECKING' and self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
             self.fail('STATUS_TIMEOUT')
 
     def snapshot(self):
