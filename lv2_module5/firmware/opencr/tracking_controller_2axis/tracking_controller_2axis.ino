@@ -50,7 +50,7 @@ const float MAX_RAD_S = 0.05f;
 const float RAD_S_PER_UNIT = 0.229f * 6.28318530718f / 60.0f;
 // Velocity input is already motor-native sign: positive pan left, tilt down.
 // Reference pose: manually verified pan=3078, tilt=0 modulo 4096.
-const int32_t STOP_COUNTS = 80, OUTER_COUNTS = 100;
+const int32_t STOP_COUNTS = 800, OUTER_COUNTS = 900;
 
 bool ready = false, holding = false, armed = false, faulted = false;
 bool stopping = false, baseline = false;

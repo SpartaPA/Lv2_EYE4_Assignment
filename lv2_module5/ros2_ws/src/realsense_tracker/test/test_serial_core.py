@@ -62,8 +62,26 @@ class SerialTests(unittest.TestCase):
             self.assertFalse(self.command(p,t,stamp=stamp,now=now))
             self.assertEqual(self.bridge.phase,'FAULT');self.assertFalse(self.bridge.arm()[0])
     def test_missing_ack_is_not_retried(self):
-        self.line(state(mode=self.mode));self.bridge.prepare();self.now+=.7;self.bridge.tick()
-        self.assertEqual(self.bridge.phase,'FAULT');self.assertEqual(self.io.tx.count('CHECK'),1)
+        self.line(state(mode=self.mode))
+        self.assertTrue(self.bridge.prepare()[0])
+        deadline = self.bridge.pending[1]
+
+        self.now = deadline - .01
+        self.bridge.tick()
+        self.assertEqual(self.bridge.phase, 'CHECKING')
+        self.assertEqual(self.io.tx.count('CHECK'), 1)
+        self.assertNotIn('HOLD', self.io.tx)
+
+        self.now = deadline + .01
+        self.bridge.tick()
+        self.assertEqual(self.bridge.phase, 'FAULT')
+        self.assertEqual(self.bridge.reason, 'RESPONSE_TIMEOUT: CHECK')
+        self.assertEqual(self.io.tx.count('CHECK'), 1)
+        self.assertNotIn('HOLD', self.io.tx)
+
+        self.now += 1.
+        self.bridge.tick()
+        self.assertEqual(self.io.tx.count('CHECK'), 1)
     def test_missing_arm_ack_no_vel_or_retry(self):
         self.prepared();self.command();self.bridge.arm();self.now+=.21
         self.command(stamp=2_000_000_000,now=2_000_000_000);self.bridge.tick()

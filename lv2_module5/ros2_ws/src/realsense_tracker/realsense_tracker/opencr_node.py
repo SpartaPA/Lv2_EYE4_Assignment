@@ -74,7 +74,7 @@ class SerialNode(Node):
                                      command_age=float(get('command_max_age_sec')))
             self.timer = self.create_timer(.01, self.tick)
             if mode == 'LIVE':
-                self.get_logger().warn('SERIAL LIVE: motor output firmware expected. Only STATUS sent; '
+                self.get_logger().warning('SERIAL LIVE: motor output firmware expected. Only STATUS sent; '
                                        'explicit /opencr/prepare and /opencr/arm required. Support the camera.')
             else:
                 self.get_logger().info('SERIAL DRY: MODE=DRY firmware only; explicit prepare and arm required')

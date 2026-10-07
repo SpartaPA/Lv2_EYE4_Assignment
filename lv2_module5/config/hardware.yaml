@@ -23,8 +23,8 @@ firmware_limits:               # tracking_controller_2axis.ino 상수 (bench 설
   pan_neutral_encoder: 3078    # 수동 기준 자세 — 근거: results/logs/opencr/inspect_20261006_110144/manual_pose_calibration.md
   tilt_neutral_encoder_modulo: 0
   startup_tolerance_counts: 20 # CHECK/HOLD 시 중립 허용 오차
-  stop_boundary_counts: 80     # STOP_COUNTS: 중립 ±80 counts(약 ±7°)에서 바깥 방향 명령 → EVENT LIMIT + DISARM
-  outer_fault_counts: 100      # OUTER_COUNTS: ±100 counts(약 ±8.8°) 넘으면 FAULT
+  stop_boundary_counts: 800     # STOP_COUNTS: 중립 ±80 counts(약 ±7°)에서 바깥 방향 명령 → EVENT LIMIT + DISARM
+  outer_fault_counts: 900      # OUTER_COUNTS: ±100 counts(약 ±8.8°) 넘으면 FAULT
   # TODO(실기): 실제 기구 안전 회전 범위를 확인해 STOP/OUTER 값을 확정. 현재 값은 중립 부근 bench 시험용이며
   #             추적 시 목표가 이 범위를 넘으면 세션이 LIMIT/FAULT로 끝난다.
   #             참고(토크 OFF 수동 측정, 기구 한계 아님): Pan 좌 3482 / 우 2582, Tilt 위 3724 / 아래 4338

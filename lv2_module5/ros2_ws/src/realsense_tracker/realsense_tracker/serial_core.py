@@ -180,8 +180,10 @@ class SerialBridge:
     def prepare(self):
         """운영자 명시 요청: CHECK(모델·모드·중립 자세 확인) → HOLD(영속도로 토크 ON)."""
         if self.phase!='BOOT':return False,'Requires a fresh BOOT state; reset firmware first'
-        self.phase='CHECKING';self.phase_deadline=self.clock()+0.8
-        self.send('CHECK','CHECK',0.6);return True,'CHECK/HOLD requested; wait for READY status'
+        if self.pending:return False,'Serial transaction pending; wait briefly and retry PREPARE'
+        self.phase='CHECKING';self.phase_deadline=self.clock()+2.0
+        if not self.send('CHECK','CHECK',1.5):return False,'CHECK transmission failed; inspect bridge status'
+        return True,'CHECK/HOLD requested; wait for READY status'
 
     def arm(self):
         if self.phase!='READY' or self.pending:return False,'Requires READY with no outstanding transaction'
@@ -282,7 +284,7 @@ class SerialBridge:
         if self.phase_deadline and now>=self.phase_deadline:self.fail('SESSION_TRANSITION_TIMEOUT');return
         if self.phase in ('ARMING','VERIFY_ARM','ARMED'):
             if not self.latest or now>=self.latest[3]:self.fail('ROS_COMMAND_TIMEOUT');return
-        if self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
+        if self.phase not in ('CHECKING','HOLDING','WAIT_HOLD','VERIFY_READY') and self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
             self.fail('STATUS_TIMEOUT');return
         if self.pending:
             if now>=self.pending[1]:self.fail('RESPONSE_TIMEOUT: '+self.pending[0])
@@ -310,7 +312,7 @@ class SerialBridge:
             return
         if self.mode_verified and now-self.last_poll>=(0.02 if self.stopping else self.STATUS_PERIOD):
             self.send('STATUS','STATUS')
-        if self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
+        if self.phase not in ('CHECKING','HOLDING','WAIT_HOLD','VERIFY_READY') and self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
             self.fail('STATUS_TIMEOUT')
 
     def snapshot(self):
