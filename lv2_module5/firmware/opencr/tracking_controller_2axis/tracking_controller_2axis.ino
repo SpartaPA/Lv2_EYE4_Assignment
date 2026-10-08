@@ -7,7 +7,7 @@
 // 이 계층의 책임 (Pi의 control_node는 P제어·방향·속도 상한·deadband·상태·target timeout 담당)
 //   - 단위 변환: rad/s → Goal_Velocity 원시 단위(0.229 rpm). 부호는 이미 모터 원시 부호 (방향 재적용 없음)
 //   - 속도 상한: |VEL| > MAX_RAD_S(0.05) → ERR RANGE, 두 값 중 하나라도 잘못되면 둘 다 거부
-//   - 각도 경계: 실제 엔코더 위치 기준. 중립 ±STOP_COUNTS에서 바깥 방향 명령 → EVENT LIMIT + DISARM,
+//   - 각도 경계: 실제 엔코더 위치 기준. 중립 ±STOP_COUNTS에서 바깥 방향 명령 → EVENT LIMIT + 정지(ARM 유지),
 //               ±OUTER_COUNTS 초과 → FAULT (bench 값, 실제 기구 범위 확정 TODO — config/hardware.yaml)
 //   - 명령 timeout: ARM 중 마지막 유효 명령 후 COMMAND_MS(300 ms) → 두 축 0 + DISARM (토크 유지)
 //               → control_node·opencr_node·USB 어느 쪽이 멈춰도 마지막 속도로 계속 돌지 않는다
@@ -288,9 +288,9 @@ void service() {
   if(faulted)return;
   if(!stopping) {
     for(uint8_t i=0;i<2;++i) {
-      int64_t d=(int64_t)pos[i]-origin[i];
+      int64_t d=relativePosition(i,pos[i]);
       if((d>=STOP_COUNTS[i] && goal[i]>0)||(d<=-STOP_COUNTS[i] && goal[i]<0)) {
-        stopBoth(true,"EVENT LIMIT DISARMED ZERO_REQUESTED");break;
+        stopBoth(false,"EVENT LIMIT STOPPED ZERO_REQUESTED");break;
       }
     }
   }
@@ -346,7 +346,7 @@ void command(const char *s) {
     for(uint8_t i=0;i<2;++i) {
       const int64_t d=relativePosition(i,pos[i]);
       if((d>=STOP_COUNTS[i] && next[i]>0)||(d<=-STOP_COUNTS[i] && next[i]<0)) {
-        stopBoth(true,"EVENT LIMIT DISARMED ZERO_REQUESTED");return;
+        stopBoth(false,"EVENT LIMIT STOPPED ZERO_REQUESTED");return;
       }
     }
     lastCommand=millis(); // Bus latency counts toward 300 ms, not added afterward.

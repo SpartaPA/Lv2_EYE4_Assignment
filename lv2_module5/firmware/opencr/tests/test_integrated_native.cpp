@@ -40,7 +40,7 @@ int main(){
  reset();prepared();send("ARM\nVEL .048 0\n");
  for(int p=3100;p<=4420;p+=20){send("VEL .048 0\n");dxl.regs[{11,"Present_Position"}]=p;advance(25);}
  dxl.regs[{11,"Present_Position"}]=4423; advance(25);
- assert(!armed&&!faulted&&goal[0]==0);advance(150);assert(!stopping);
+ assert(armed&&!faulted&&goal[0]==0);advance(150);assert(!stopping);
  // Initial tilt pose may be represented as 0 or 4096 after reboot.
  reset();dxl.regs[{12,"Present_Position"}]=0;prepared();assert(origin[1]==0);
  // A reset during holding is a fault, not a silently wrapped reading.
