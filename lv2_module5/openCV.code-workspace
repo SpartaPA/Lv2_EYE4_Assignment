@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "../../openCV"
+		},
+		{
+			"path": "../../../Downloads/examples/__pycache__"
+		},
+		{
+			"path": "../../../Downloads/examples/step_tests"
+		},
+		{
+			"path": "../../object_tracking"
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
