@@ -16,8 +16,8 @@ from pathlib import Path
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, SetEnvironmentVariable,
-                            Shutdown)
+from launch.actions import (DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription,
+                            SetEnvironmentVariable, Shutdown)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -25,7 +25,7 @@ from launch_ros.actions import Node
 
 LV2 = Path(__file__).resolve().parents[1]                      # lv2_module5
 PKG = LV2 / "ros2_ws" / "src" / "realsense_tracker"
-CAMERA_YAML = LV2 / "config" / "camera.yaml"
+CAMERA_YAML = PKG / "config" / "camera.yaml"
 TRACKER_YAML = PKG / "config" / "tracker.yaml"
 RVIZ_CONFIG = PKG / "rviz" / "tracking_view.rviz"
 DEPTH_VIEW = LV2 / "tools" / "depth_view.py"
@@ -41,11 +41,12 @@ def generate_launch_description():
         DeclareLaunchArgument("discovery_range", default_value="LOCALHOST"),
         # 같은 네트워크의 다른 팀 노드와 섞이지 않게 기본은 이 컴퓨터 안에서만 통신
         SetEnvironmentVariable("ROS_AUTOMATIC_DISCOVERY_RANGE", LaunchConfiguration("discovery_range")),
-        IncludeLaunchDescription(
+        # forwarding=False: rs_launch.py가 rviz 등 이 파일의 인자를 파라미터로 받아 경고를 내지 않게 아래 3개만 전달
+        GroupAction([IncludeLaunchDescription(
             PythonLaunchDescriptionSource(str(rs_launch)),
             launch_arguments={"align_depth.enable": "true",
                               "rgb_camera.color_profile": profile,
-                              "depth_module.depth_profile": profile}.items()),
+                              "depth_module.depth_profile": profile}.items())], forwarding=False),
         Node(package="realsense_tracker", executable="perception_node", output="screen",
              parameters=[str(TRACKER_YAML), {"camera_config": str(CAMERA_YAML), "publish_debug_image": True}]),
         ExecuteProcess(cmd=["python3", str(DEPTH_VIEW)], output="screen",
