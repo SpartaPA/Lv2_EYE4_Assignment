@@ -111,14 +111,3 @@ Tilt의 정상 정지는 목표 속도 0과 토크 유지를 사용한다.
 | 기구 안전 회전 범위 (펌웨어 경계 ±80/±100 counts는 bench 값) | 미확정 |
 | 위치 경계 정지, 실제 정지 지연, 모터 버스 단절, Bus_Watchdog 실동작 | 미시험 |
 | D435를 Raspberry Pi USB 3에 연결한 상태의 USB 속도·FPS | 미기록 (기존 기록은 인지 담당 노트북) |
-
-### Expanded tracking envelope — 2026-10-07
-
-Operator confirms mechanical and cable clearance within ±1000 encoder counts
-from the established neutral pose on both Pan and Tilt, with the D435 mounted.
-This is operator confirmation, not an instrumented stopping-distance result.
-
-Firmware normal stop boundary: ±800 counts.
-Firmware outer fault boundary: ±900 counts.
-Initial expanded-range tracking command cap: 0.024 rad/s per axis.
-Stopping distance and sustained closed-loop tracking remain to be verified.

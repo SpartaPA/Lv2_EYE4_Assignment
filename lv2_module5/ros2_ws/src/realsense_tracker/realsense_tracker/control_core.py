@@ -29,7 +29,7 @@ import math
 
 # 펌웨어 tracking_controller_2axis.ino 의 MAX_RAD_S 와 같은 값 (펌웨어가 이보다 큰 VEL을 거부).
 # control의 축별 속도 상한은 이 값 이하여야 하며, opencr_node도 같은 상한으로 명령을 검사한다.
-MAX_VELOCITY_RAD_S = 0.05
+MAX_VELOCITY_RAD_S = 0.10
 
 
 class Controller:

@@ -22,8 +22,8 @@ LIVE에서도 자동 동작은 없다
 
 시리얼 로그 CSV(csv_path)는 bag과 같은 run_id를 파일명에 넣어 연결한다.
 """
+import csv
 import json
-import time
 
 import rclpy
 from rclpy.node import Node
@@ -32,7 +32,6 @@ from std_srvs.srv import Trigger
 
 from realsense_tracker_interfaces.msg import PanTiltCommand
 
-from .async_csv import AsyncCsv
 from .dry_bridge import DryBridge
 from .serial_core import PosixSerial, SerialBridge, check_mode
 
@@ -40,8 +39,6 @@ USB_BAUDRATE = 115200  # 기본값. 펌웨어 Serial.begin(115200)과 같아야 
 
 
 class SerialNode(Node):
-    STATUS_PUBLISH_PERIOD_SEC = 0.1
-
     def __init__(self):
         super().__init__('opencr_node')
         self.declare_parameter('dry_run', True)
@@ -61,14 +58,15 @@ class SerialNode(Node):
         mode = check_mode(get('dry_run'), get('expected_board_mode'), get('enable_live_hardware'))
         if not get('port'):
             raise RuntimeError('Explicit serial port required (/dev/serial/by-id/...)')
-        self.csv_log = None
+        self.file = None
+        self.writer = None
         self.link = None
         self.transport = None
-        self._last_status_signature = None
-        self._last_status_publish = float('-inf')
         try:
             if get('csv_path'):
-                self.csv_log = AsyncCsv(get('csv_path'))
+                self.file = open(get('csv_path'), 'x', newline='')  # 'x': 기존 증거를 덮어쓰지 않음
+                self.writer = csv.writer(self.file, lineterminator='\n')
+                self.writer.writerow(['monotonic_sec', 'direction', 'line'])
             self.status = self.create_publisher(String, '/opencr/bridge_status', 1)
             self.sub = self.create_subscription(PanTiltCommand, '/control/pan_tilt_cmd', self.command, 1)
             self.prepare_service = self.create_service(Trigger, '/opencr/prepare', self.prepare)
@@ -86,13 +84,14 @@ class SerialNode(Node):
         except Exception:
             if self.transport:
                 self.transport.close()
-            if self.csv_log:
-                self.csv_log.close()
+            if self.file:
+                self.file.close()
             raise
 
     def record(self, now, direction, line):
-        if self.csv_log:
-            self.csv_log.record(now, direction, line)
+        if self.writer:
+            self.writer.writerow([now, direction, line])
+            self.file.flush()
 
     def command(self, msg):
         stamp = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
@@ -101,45 +100,27 @@ class SerialNode(Node):
 
     def prepare(self, request, response):
         response.success, response.message = self.link.prepare()
-        self._publish_status(force=True)
         return response
 
     def arm(self, request, response):
         response.success, response.message = self.link.arm()
-        self._publish_status(force=True)
         return response
 
     def disarm(self, request, response):
         response.success, response.message = self.link.disarm()
-        self._publish_status(force=True)
         return response
-
-    def _publish_status(self, force=False):
-        now = time.monotonic()
-        signature = (self.link.phase, self.link.reason)
-        changed = signature != self._last_status_signature
-        if (not force and not changed
-                and now - self._last_status_publish < self.STATUS_PUBLISH_PERIOD_SEC):
-            return
-
-        state = self.link.snapshot()
-        state['logging'] = self.csv_log.snapshot() if self.csv_log else {'enabled': False}
-        msg = String()
-        msg.data = json.dumps(state)
-        self.status.publish(msg)
-        self._last_status_signature = signature
-        self._last_status_publish = now
 
     def tick(self):
         self.link.tick()
-        self._publish_status()
+        msg = String()
+        msg.data = json.dumps(self.link.snapshot())
+        self.status.publish(msg)
 
     def destroy_node(self):
         if self.link:
             self.link.close()
-        if self.csv_log:
-            result = self.csv_log.close()
-            self.get_logger().info('CSV_FINAL ' + json.dumps(result))
+        if self.file:
+            self.file.close()
         return super().destroy_node()
 
 

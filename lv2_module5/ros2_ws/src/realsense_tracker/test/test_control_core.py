@@ -1,5 +1,5 @@
 import unittest
-from realsense_tracker.control_core import Controller
+from realsense_tracker.control_core import Controller, MAX_VELOCITY_RAD_S
 
 class CoreTests(unittest.TestCase):
     def frames(self,c,x=0.4,y=0,z=0.1,start=1.0,count=3):
@@ -49,7 +49,7 @@ class CoreTests(unittest.TestCase):
         now=self.frames(c,-1,.05,start=1.2);stop,pan,tilt=c.output(now,int(now*1e9))
         self.assertAlmostEqual(pan,.02);self.assertAlmostEqual(tilt,.005)
     def test_speed_limit_cannot_exceed_firmware_ceiling(self):
-        with self.assertRaises(ValueError):Controller(pan_speed_limit=.06)
+        with self.assertRaises(ValueError):Controller(pan_speed_limit=MAX_VELOCITY_RAD_S+.01)
         with self.assertRaises(ValueError):Controller(tilt_speed_limit=0)
     def test_explicit_disable_is_idle_and_needs_three_frames(self):
         c=Controller();self.frames(c);self.assertEqual(c.state,'TRACKING')

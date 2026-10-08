@@ -10,19 +10,21 @@
 #   Kp A/B 세트는 lv2_module5/config/test.yaml에 시험 전에 기록하고, 시험 시 -p kp_pan:=... 로 바꿔 실행한다.
 control_node:
   ros__parameters:
-    kp_pan: 0.1                 # rad/s per 1.0 ex; 작업 설정 선정 근거: docs/control_progress_20261008.md
-    kp_tilt: 0.1                # rad/s per 1.0 ey; 이번 Pan Kp 비교에서 유지
-    # 속도 상한: 펌웨어 MAX_RAD_S(0.05 rad/s) 이하만 허용 (초과 시 노드 시작 거부)
-    pan_speed_limit_rad_s: 0.05
-    tilt_speed_limit_rad_s: 0.05
+    kp_pan: 0.3                 # rad/s per 1.0 ex  (2026-10-07 운영자 지정 0.1→0.3: ex=1에서 상한 0.3 rad/s. TODO: Kp A/B 시험 후 최종값 기록)
+    kp_tilt: 0.3                # rad/s per 1.0 ey  (2026-10-07 운영자 지정 0.1→0.3. TODO: Kp A/B 시험 후 최종값 기록)
+    # 속도 상한: 펌웨어 MAX_RAD_S(0.3 rad/s) 이하만 허용 (초과 시 노드 시작 거부)
+    pan_speed_limit_rad_s: 0.10
+    tilt_speed_limit_rad_s: 0.10
     pan_deadband: 0.03          # |ex| 이하이면 Pan 0 (중심 떨림 방지)
     tilt_deadband: 0.03         # |ey| 이하이면 Tilt 0
     target_timeout_sec: 0.5     # 발제문 기본값. 바꾸면 이유를 report에 기록
     recovery_frames: 3          # LOST → TRACKING 복귀에 필요한 연속 신선 검출 프레임 수
     # 영상 오차 부호 → 모터 원시 속도 부호. 여기서 한 번만 적용 (bridge·펌웨어는 다시 곱하지 않음)
-    # 근거: docs/hardware.md 실구동 방향 — Pan 양의 명령 = 좌측, Tilt 양의 명령 = 아래쪽
-    #   목표가 오른쪽(ex>0) → 카메라를 오른쪽으로 → Pan 음의 명령 → pan_direction = -1
-    #   목표가 아래쪽(ey>0) → 카메라를 아래로     → Tilt 양의 명령 → tilt_direction = +1
+    # 근거: 2026-10-07 재조립 후 실측 (카메라가 바라보는 방향 기준, 모터 원시 속도 명령 = 펌웨어 VEL = 엔코더 증가 방향)
+    #   Pan  양의 명령 = 좌측 (재조립 전과 같음)
+    #   Tilt 양의 명령 = 위쪽 (재조립 전 "아래쪽"에서 반대로 바뀜)
+    #   목표가 오른쪽(ex>0) → 카메라를 오른쪽으로 → Pan 음의 명령  → pan_direction = -1
+    #   목표가 아래쪽(ey>0) → 카메라를 아래로     → Tilt 음의 명령 → tilt_direction = -1
     # 실제 영상 오차 감소 방향(카메라 장착 상태에서의 폐루프 부호)은 README 12단계로 다시 확인한다.
     pan_direction: -1
-    tilt_direction: 1
+    tilt_direction: -1
