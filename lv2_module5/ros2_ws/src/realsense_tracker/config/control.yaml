@@ -13,8 +13,8 @@ control_node:
     kp_pan: 0.3                 # rad/s per 1.0 ex  (2026-10-07 운영자 지정 0.1→0.3: ex=1에서 상한 0.3 rad/s. TODO: Kp A/B 시험 후 최종값 기록)
     kp_tilt: 0.3                # rad/s per 1.0 ey  (2026-10-07 운영자 지정 0.1→0.3. TODO: Kp A/B 시험 후 최종값 기록)
     # 속도 상한: 펌웨어 MAX_RAD_S(0.3 rad/s) 이하만 허용 (초과 시 노드 시작 거부)
-    pan_speed_limit_rad_s: 0.3
-    tilt_speed_limit_rad_s: 0.3
+    pan_speed_limit_rad_s: 0.10
+    tilt_speed_limit_rad_s: 0.10
     pan_deadband: 0.03          # |ex| 이하이면 Pan 0 (중심 떨림 방지)
     tilt_deadband: 0.03         # |ey| 이하이면 Tilt 0
     target_timeout_sec: 0.5     # 발제문 기본값. 바꾸면 이유를 report에 기록
