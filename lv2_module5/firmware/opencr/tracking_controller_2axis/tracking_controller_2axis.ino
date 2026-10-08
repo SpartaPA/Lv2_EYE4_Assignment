@@ -28,6 +28,14 @@ extern "C" {
 #error ENABLE_MOTOR_OUTPUT_must_be_0_or_1
 #endif
 
+// Commissioning option: accept the mechanically assembled, stationary pose as
+// the runtime origin. Hardware identity, zero velocity, and all runtime limits
+// remain enforced. Set to 0 after the physical neutral encoder values are
+// confirmed and restore the fixed neutral check below.
+#ifndef ACCEPT_STATIONARY_POSE_AS_ORIGIN
+#define ACCEPT_STATIONARY_POSE_AS_ORIGIN 1
+#endif
+
 DynamixelWorkbench dxl;
 const uint8_t IDS[2] = {11, 12};  // {Pan, Tilt} — dxl_discovery 스캔으로 확인
 const uint32_t COMMAND_MS = 500, POLL_MS = 20, BUS_TICKS = 25;  // 명령 timeout, 피드백 주기, 모터 watchdog(×20 ms)
@@ -165,10 +173,20 @@ void check() {
   pos[0]=3078;pos[1]=4096;
 #endif
   if(!feedback())return;
-  if(labs(pos[0]-3078)>20 || labs(neutralOffset(pos[1]))>20 || vel[0]!=0 || vel[1]!=0) {
+  if(vel[0]!=0 || vel[1]!=0) {
+    fail("SUPPORT_AT_NEUTRAL");return;
+  }
+#if ACCEPT_STATIONARY_POSE_AS_ORIGIN
+  // The current stationary pose is accepted for commissioning. This avoids
+  // assuming the old hard-coded assembly reference before it is measured.
+  origin[0]=pos[0];
+  origin[1]=pos[1]-neutralOffset(pos[1]);
+#else
+  if(labs(pos[0]-3078)>20 || labs(neutralOffset(pos[1]))>20) {
     fail("SUPPORT_AT_NEUTRAL");return;
   }
   origin[0]=3078; origin[1]=pos[1]-neutralOffset(pos[1]);
+#endif
   for(uint8_t i=0;i<2;++i) {previous[i]=pos[i];holdAnchor[i]=pos[i];}
   baseline=true;ready=true;
   // 초기 점검 완료. runtime 서비스/handshake로 노출하지 않음.
