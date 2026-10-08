@@ -10,8 +10,8 @@
 #   Kp A/B 세트는 lv2_module5/config/test.yaml에 시험 전에 기록하고, 시험 시 -p kp_pan:=... 로 바꿔 실행한다.
 control_node:
   ros__parameters:
-    kp_pan: 0.1                 # rad/s per 1.0 ex  (TODO: Kp A/B 시험 후 최종값 기록)
-    kp_tilt: 0.1                # rad/s per 1.0 ey  (TODO: Kp A/B 시험 후 최종값 기록)
+    kp_pan: 0.1                 # rad/s per 1.0 ex; 작업 설정 선정 근거: docs/control_progress_20261008.md
+    kp_tilt: 0.1                # rad/s per 1.0 ey; 이번 Pan Kp 비교에서 유지
     # 속도 상한: 펌웨어 MAX_RAD_S(0.05 rad/s) 이하만 허용 (초과 시 노드 시작 거부)
     pan_speed_limit_rad_s: 0.05
     tilt_speed_limit_rad_s: 0.05
