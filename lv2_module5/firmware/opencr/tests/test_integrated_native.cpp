@@ -38,7 +38,8 @@ int main(){
  auto count=dxl.reads;auto wc=dxl.writes.size();advance(500);send("STATUS\nARM\n");assert(dxl.reads==count&&dxl.writes.size()==wc);
  reset();prepared();send("ARM\nVEL .048 0\n");dxl.badRead=12;advance(25);assert(faulted&&!armed&&goal[0]==0);
  reset();prepared();send("ARM\nVEL .048 0\n");
- for(int p:{3100,3120,3140,3158}){dxl.regs[{11,"Present_Position"}]=p;advance(25);}
+ for(int p=3098;p<3078+STOP_COUNTS[0];p+=20){dxl.regs[{11,"Present_Position"}]=p;send("VEL .048 0\n");advance(25);}
+ dxl.regs[{11,"Present_Position"}]=3078+STOP_COUNTS[0];send("VEL .048 0\n");
  assert(!armed&&!faulted&&goal[0]==0);advance(150);assert(!stopping);
  // Initial tilt pose may be represented as 0 or 4096 after reboot.
  reset();dxl.regs[{12,"Present_Position"}]=0;prepared();assert(origin[1]==0);
@@ -48,4 +49,5 @@ int main(){
  assert(dxl.inits==0&&dxl.reads==0&&dxl.writes.empty());
 #endif
  std::cout<<"PASS native controller scenarios MODE="<<(ENABLE_MOTOR_OUTPUT?"LIVE_STUB":"DRY")<<"\n";
+ return 0;
 }

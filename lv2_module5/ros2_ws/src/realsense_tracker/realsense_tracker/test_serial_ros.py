@@ -14,7 +14,11 @@ from rclpy.node import Node
 from geometry_msgs.msg import PointStamped
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+from ament_index_python.packages import get_package_share_directory
 from .control_node import TARGET_QOS
+
+# control_node는 모의 시험 고정값 파일(control_dry.yaml)로 실행한다 — 기대 명령(±0.04 rad/s)의 근거를 한 곳에 둠
+DRY_PARAMS=str(Path(get_package_share_directory('realsense_tracker'))/'config'/'control_dry.yaml')
 
 
 def main():
@@ -54,7 +58,7 @@ def main():
         bridge=child([sys.executable,'-m','realsense_tracker.opencr_node','--ros-args',
                       '-p','dry_run:=true','-p','serial_mode:=true','-p','expected_board_mode:=DRY',
                       '-p',f'port:={port}','-p',f'csv_path:={out / "serial_ros.csv"}'],'serial_node.log')
-        control=child([sys.executable,'-m','realsense_tracker.control_node'],'control_node.log')
+        control=child([sys.executable,'-m','realsense_tracker.control_node','--ros-args','--params-file',DRY_PARAMS],'control_node.log')
         def wait(predicate,target=None,timeout=5,allow_fault=False):
             end=time.monotonic()+timeout
             while time.monotonic()<end:

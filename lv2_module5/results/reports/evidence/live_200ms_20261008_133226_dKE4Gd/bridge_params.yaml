@@ -1,0 +1,13 @@
+/opencr_node:
+  ros__parameters:
+    command_max_age_sec: 0.2
+    csv_path: /home/pa44/git/Lv2_EYE4_Assignment-camera-dry-20261007_140322/lv2_module5/results/logs/ros2/live_200ms_20261008_133226_dKE4Gd/serial_live.csv
+    dry_run: false
+    enable_live_hardware: true
+    expected_board_mode: LIVE
+    port: /dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00
+    serial_mode: true
+    start_type_description_service: true
+    usb_serial_baudrate: 115200
+    use_sim_time: false
+

@@ -14,6 +14,12 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(c.output(1.2,1200000000),(True,0,0));self.assertEqual(c.state,'LOST')
         c=Controller();self.frames(c);self.assertEqual(c.output(1.7,1700000000),(True,0,0))
         self.assertEqual(c.state,'LOST')
+    def test_direction_parameters(self):
+        c=Controller(pan_direction=1,tilt_direction=-1);now=self.frames(c,.4,.4)
+        stop,pan,tilt=c.output(now,int(now*1e9));self.assertFalse(stop)
+        self.assertAlmostEqual(pan,.04);self.assertAlmostEqual(tilt,-.04)
+        with self.assertRaises(ValueError):Controller(pan_direction=0)
+        with self.assertRaises(ValueError):Controller(tilt_direction=2)
     def test_recovery_after_silence(self):
         c=Controller();self.frames(c)
         self.frames(c,start=2,count=1);self.assertEqual(c.state,'LOST')
@@ -36,5 +42,21 @@ class CoreTests(unittest.TestCase):
             c.receive(.4,0,.1,int((now-.4)*1e9),int(now*1e9),now)
         self.assertEqual(c.state,'TRACKING')
         self.assertEqual(c.output(1.21,1210000000),(True,0,0))
+
+    def test_per_axis_limits_and_deadbands(self):
+        c=Controller(pan_speed_limit=.02,tilt_speed_limit=.05,pan_deadband=.1,tilt_deadband=0)
+        now=self.frames(c,.05,1);self.assertEqual(c.output(now,int(now*1e9)),(False,0,.05))
+        now=self.frames(c,-1,.05,start=1.2);stop,pan,tilt=c.output(now,int(now*1e9))
+        self.assertAlmostEqual(pan,.02);self.assertAlmostEqual(tilt,.005)
+    def test_speed_limit_cannot_exceed_firmware_ceiling(self):
+        with self.assertRaises(ValueError):Controller(pan_speed_limit=.06)
+        with self.assertRaises(ValueError):Controller(tilt_speed_limit=0)
+    def test_explicit_disable_is_idle_and_needs_three_frames(self):
+        c=Controller();self.frames(c);self.assertEqual(c.state,'TRACKING')
+        c.set_enabled(False);self.assertEqual(c.output(1.11,1110000000),(True,0,0))
+        self.frames(c,start=1.15,count=3);self.assertEqual(c.state,'IDLE')
+        self.assertEqual(c.output(2.0,2000000000),(True,0,0));self.assertEqual(c.state,'IDLE')
+        c.set_enabled(True);self.frames(c,start=2.0,count=2);self.assertNotEqual(c.state,'TRACKING')
+        self.frames(c,start=2.1,count=1);self.assertEqual(c.state,'TRACKING')
 
 if __name__=='__main__':unittest.main()

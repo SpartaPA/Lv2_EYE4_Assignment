@@ -1,0 +1,11 @@
+PASS serial STATUS/CHECK/HOLD without automatic ARM
+PASS serial center
+PASS serial pan-right
+PASS serial pan-left
+PASS serial tilt-down
+PASS serial tilt-up
+PASS serial both
+PASS stop=true keeps logical arming for normal target recovery
+PASS fresh target command resumes after STOP without another ARM
+PASS command silence latches and prevents automatic re-arm
+ALL SERIAL PTY CORE CHECKS PASSED; FIRMWARE_MODE=DRY

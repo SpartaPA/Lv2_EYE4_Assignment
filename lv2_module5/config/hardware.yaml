@@ -1,0 +1,39 @@
+# Hardware record (장치 기록) — 어떤 노드도 이 파일을 읽지 않는다.
+# OpenCR 펌웨어는 YAML을 읽을 수 없으므로 아래 값은 펌웨어 컴파일 상수가 실제 Source of Truth이다:
+#   firmware/opencr/tracking_controller_2axis/tracking_controller_2axis.ino
+# 이 파일은 그 상수와 실측 근거를 한 곳에 정리한 사본이다. 펌웨어 상수를 바꾸면 이 파일도 같은 commit에서 고친다.
+# (호스트 실행값은 여기 두지 않는다: 포트·USB baud → ros2_ws/.../config/opencr_live.yaml, 방향 → control.yaml)
+
+dynamixel:
+  model: XM430-W350            # 모델 번호 1020 — 근거: results/logs/opencr/discovery_sdk_fix_20261006_103249/scan.log
+  protocol_version: 2.0        # 펌웨어 CHECK에서 재확인 (getProtocolVersion)
+  bus_baudrate: 1000000        # 펌웨어 dxl.init(..., 1000000) — Pi↔OpenCR USB 115200과 별개
+  pan_id: 11                   # 펌웨어 IDS[0] — 근거: scan.log, docs/hardware.md (2026-10-06 실측)
+  tilt_id: 12                  # 펌웨어 IDS[1]
+  operating_mode: 1            # Velocity Mode — 펌웨어 CHECK가 1이 아니면 거부 (inspect.log 실측 1)
+  # 원시 Goal_Velocity 양의 방향 (카메라 뒤에서 정면 기준) — 근거: pan_commission / tilt_commission test_notes
+  pan_positive: left
+  tilt_positive: down
+
+firmware_limits:               # tracking_controller_2axis.ino 상수 (bench 설정값 — 기구 안전 한계 승인 아님)
+  max_velocity_rad_s: 0.05     # MAX_RAD_S. 초과 VEL은 ERR RANGE (control_core.MAX_VELOCITY_RAD_S와 같은 값)
+  velocity_unit_rpm: 0.229     # XM430 Goal_Velocity 1 단위 (RAD_S_PER_UNIT = 0.229*2π/60 ≈ 0.02398 rad/s)
+  command_timeout_ms: 300      # COMMAND_MS: 마지막 유효 명령 후 300 ms → 두 축 0 + DISARM (토크 유지)
+  bus_watchdog_ticks: 10       # BUS_TICKS × 20 ms = 200 ms 모터 측 Bus_Watchdog (보드가 멈춰도 모터 정지)
+  pan_neutral_encoder: 3078    # 수동 기준 자세 — 근거: results/logs/opencr/inspect_20261006_110144/manual_pose_calibration.md
+  tilt_neutral_encoder_modulo: 0
+  startup_tolerance_counts: 50 # CHECK/HOLD; 기준 축은 기존 교정 중립 유지
+  arm_pose_exclusive_counts: 70 # 기존 ARM 조건 유지: abs(offset) < 70
+  hold_drift_counts: 20        # 기존 정지 자세 드리프트 보호 유지
+  requested_pan_half_range_deg: 120
+  requested_tilt_half_range_deg: 60
+  pan_stop_boundary_counts: 1345 # 약 118.21도; 정상 LIMIT 정지/해제
+  tilt_stop_boundary_counts: 662 # 약 58.18도
+  pan_outer_fault_counts: 1365   # 약 119.97도; 도달 시 FAULT
+  tilt_outer_fault_counts: 682   # 약 59.94도; 도달 시 FAULT
+  stop_margin_counts: 20         # 약 1.76도; 실제 제동 여유는 아직 검증하지 않음
+  # 범위는 시작 측정값이 아니라 교정 중립 Pan=3078, Tilt=0 modulo 4096 기준.
+  # 소프트웨어 경계는 기계적 한계 내 정지를 보장하지 않는다. 끝단 충돌 시험 금지.
+
+camera:
+  model: Intel RealSense D435  # Product ID 0x0B07 (IMU 없는 D435). 상세: ros2_ws/.../config/camera.yaml 주석
