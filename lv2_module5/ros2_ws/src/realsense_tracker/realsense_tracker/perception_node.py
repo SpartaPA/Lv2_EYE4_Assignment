@@ -117,7 +117,7 @@ class PerceptionNode(Node):
         cam_path = params["camera_config"]
         if not cam_path:
             raise ConfigError("camera_config 파라미터가 비어 있음 → "
-                              "-p camera_config:=<realsense_tracker 패키지 config/camera.yaml 경로> 로 지정하세요")
+                              "-p camera_config:=<lv2_module5/config/camera.yaml 경로> 로 지정하세요")
         try:
             topics = load_camera_topics(cam_path)
         except OSError as e:
@@ -178,7 +178,7 @@ class PerceptionNode(Node):
                     scale = 1.0                        # 32FC1은 이미 m 단위
                 if depth.shape != frame.shape[:2]:     # 컬러에 정렬되지 않은 깊이는 쓸 수 없음
                     if not self.warned_size:
-                        self.get_logger().warning(
+                        self.get_logger().warn(
                             f"깊이 {depth.shape}와 컬러 {frame.shape[:2]} 크기가 달라 거리 계산을 건너뜀 "
                             "(깊이를 컬러에 정렬해서 발행해야 함)")
                         self.warned_size = True

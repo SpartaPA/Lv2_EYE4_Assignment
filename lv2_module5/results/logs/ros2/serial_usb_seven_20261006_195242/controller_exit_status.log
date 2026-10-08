@@ -1,0 +1,2 @@
+{"phase": "FAULT", "reason": "ROS_COMMAND_TIMEOUT", "serial_opened": true, "expected_mode": "DRY", "board": {"state": "ARMED", "mode": "DRY", "armed": 1, "goal": [0, 0], "pos": [3078, 4096], "vel": [0, 0], "torque": [1, 1], "age_ms": 14, "t_ms": 822391}, "board_receipt_age_sec": 285.48117272499985}
+---

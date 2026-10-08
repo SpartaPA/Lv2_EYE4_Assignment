@@ -95,3 +95,17 @@ EVENT TIMEOUT/LIMIT, FAULT/ERR, 깨진 응답, 시리얼 오류. FAULT 시 MODE�
 
 opencr_node는 마지막 비영 속도를 반복 전송해 보드 타이머를 갱신하지 않는다 (명령 1건 = 전송 1회). 300 ms는 timeout 설정값이지 실제 정지 시간이 아니다.
 정상 정지는 영속도 + 토크 유지다. Tilt는 토크가 꺼지면 내려가므로 전원 상실·하드웨어 고장 시 자세 유지는 소프트웨어로 보장할 수 없다.
+
+
+## 9. 비동기 Serial CSV 기록 및 통합 후보의 검증 범위
+
+SerialNode.record()는 bounded queue에 전달하며 AsyncCsv worker가 파일을 쓴다.
+bridge_status.logging에 accepted/written/dropped/error/worker_alive/closing을 발행한다.
+종료 순서는 serial DISARM/close → logger close(제한 시간 대기) → CSV_FINAL이다.
+최종 콘솔 보고 누락과 READY 상태의 약 338 ms 명령 수신 간격은 기존 시험의 미해결 제한으로 보존한다.
+command_max_age_sec는 이번 DRY 시험에서 0.15초를 유지한다.
+모든 runtime 노드는 Raspberry Pi에서 실행한다. 카메라 launch는 start_opencr:=false로 실행하고,
+별도 bridge에 serial_dry.yaml(dry_run=true, serial_mode=true, expected_board_mode=DRY,
+enable_live_hardware=false)을 명시한다. LIVE 설정 지원은 실제 운용 검증 완료를 뜻하지 않는다.
+
+과거 인터페이스 문서는 커밋 2779ab2에 보존되어 있다. 현재 계약은 이 문서를 따른다.

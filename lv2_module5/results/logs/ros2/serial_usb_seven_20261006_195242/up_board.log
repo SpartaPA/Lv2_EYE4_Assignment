@@ -1,0 +1,2 @@
+{"phase": "ARMED", "reason": "", "serial_opened": true, "expected_mode": "DRY", "board": {"state": "ARMED", "mode": "DRY", "armed": 1, "goal": [0, -2], "pos": [3078, 4096], "vel": [0, -2], "torque": [1, 1], "age_ms": 18, "t_ms": 293395}, "board_receipt_age_sec": 0.0900458880005317}
+---

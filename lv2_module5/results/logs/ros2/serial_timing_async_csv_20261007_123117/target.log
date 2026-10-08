@@ -1,0 +1,7 @@
+CASE center
+ARMED: starting center 30s, right 120s, silence 1200s, recovery 20s
+CASE right
+CASE silence
+CASE recovery
+Schedule complete; inspect bridge status before shutdown.
+DIAGNOSTICS SAVED: /home/pa44/git/Lv2_EYE4_Assignment/lv2_module5/results/logs/ros2/serial_timing_async_csv_20261007_123117/target_timing.jsonl
