@@ -7,8 +7,8 @@
 // 이 계층의 책임 (Pi의 control_node는 P제어·방향·속도 상한·deadband·상태·target timeout 담당)
 //   - 단위 변환: rad/s → Goal_Velocity 원시 단위(0.229 rpm). 부호는 이미 모터 원시 부호 (방향 재적용 없음)
 //   - 속도 상한: |VEL| > MAX_RAD_S(0.05) → ERR RANGE, 두 값 중 하나라도 잘못되면 둘 다 거부
-//   - 각도 경계: 실제 엔코더 위치 기준. 중립 ±STOP_COUNTS에서 바깥 방향 명령 → EVENT LIMIT + DISARM,
-//               ±OUTER_COUNTS 초과 → FAULT (bench 값, 실제 기구 범위 확정 TODO — config/hardware.yaml)
+//   - 각도 경계: 실제 엔코더 위치 기준. 중립 ±STOP_COUNTS[axis]에서 바깥 방향 명령 → EVENT LIMIT + DISARM,
+//               ±OUTER_COUNTS[axis] 도달 → FAULT (Pan ±120°, Tilt ±60° 안쪽 정수화; 실기 정지 여유 검증 필요)
 //   - 명령 timeout: ARM 중 마지막 유효 명령 후 COMMAND_MS(300 ms) → 두 축 0 + DISARM (토크 유지)
 //               → control_node·opencr_node·USB 어느 쪽이 멈춰도 마지막 속도로 계속 돌지 않는다
 //   - 모터 Bus_Watchdog: BUS_TICKS(10 × 20 ms = 200 ms) 동안 버스 패킷이 없으면 모터 스스로 정지 (보드 멈춤 대비)
@@ -50,7 +50,14 @@ const float MAX_RAD_S = 0.05f;
 const float RAD_S_PER_UNIT = 0.229f * 6.28318530718f / 60.0f;
 // Velocity input is already motor-native sign: positive pan left, tilt down.
 // Reference pose: manually verified pan=3078, tilt=0 modulo 4096.
-const int32_t STOP_COUNTS = 800, OUTER_COUNTS = 900;
+const int32_t NEUTRAL_TOLERANCE_COUNTS = 50; // CHECK/HOLD only; not HOLD_DRIFT.
+// Fixed calibrated axes, NOT the accepted startup pose. 4096 counts/revolution.
+// Outer envelope rounded inward: Pan 120 deg, Tilt 60 deg.
+constexpr int32_t OUTER_COUNTS[2] = {1365, 682};
+const int32_t STOP_MARGIN_COUNTS = 20; // Provisional; verify stopping clearance on hardware.
+constexpr int32_t STOP_COUNTS[2] = {1345, 662};
+static_assert(STOP_COUNTS[0] + STOP_MARGIN_COUNTS == OUTER_COUNTS[0], "Pan margin");
+static_assert(STOP_COUNTS[1] + STOP_MARGIN_COUNTS == OUTER_COUNTS[1], "Tilt margin");
 
 bool ready = false, holding = false, armed = false, faulted = false;
 bool stopping = false, baseline = false;
@@ -129,7 +136,7 @@ bool feedback() {
     if(baseline) {
       const int64_t d=(int64_t)pos[i]-origin[i];
       const int64_t step=(int64_t)pos[i]-previous[i];
-      if(d<=-OUTER_COUNTS || d>=OUTER_COUNTS) { fail("OUTER_BOUND"); return false; }
+      if(d<=-OUTER_COUNTS[i] || d>=OUTER_COUNTS[i]) { fail("OUTER_BOUND"); return false; }
       if(step>30 || step< -30) { fail("POSITION_DISCONTINUITY"); return false; }
       if(vel[i]>5 || vel[i]< -5) { fail("UNEXPECTED_SPEED"); return false; }
       if(holding && !stopping && goal[i]==0) {
@@ -180,7 +187,7 @@ void check() {
   pos[0]=3078;pos[1]=4096;
 #endif
   if(!feedback())return;
-  if(labs(pos[0]-3078)>20 || labs(neutralOffset(pos[1]))>20 || vel[0]!=0 || vel[1]!=0) {
+  if(labs(pos[0]-3078)>NEUTRAL_TOLERANCE_COUNTS || labs(neutralOffset(pos[1]))>NEUTRAL_TOLERANCE_COUNTS || vel[0]!=0 || vel[1]!=0) {
     fail("SUPPORT_AT_NEUTRAL");return;
   }
   origin[0]=3078; origin[1]=pos[1]-neutralOffset(pos[1]);
@@ -192,7 +199,7 @@ void hold() {
   if(!ready || holding || faulted) {reply("ERR HOLD_STATE");return;}
   // Still physically supported. Refuse a changed pose after CHECK.
   if(!feedback())return;
-  if(labs(pos[0]-origin[0])>20 || labs(pos[1]-origin[1])>20 || vel[0]!=0 || vel[1]!=0) {
+  if(labs(pos[0]-origin[0])>NEUTRAL_TOLERANCE_COUNTS || labs(pos[1]-origin[1])>NEUTRAL_TOLERANCE_COUNTS || vel[0]!=0 || vel[1]!=0) {
     fail("HOLD_POSE");return;
   }
 #if ENABLE_MOTOR_OUTPUT
@@ -259,7 +266,7 @@ void service() {
   if(!stopping) {
     for(uint8_t i=0;i<2;++i) {
       int64_t d=(int64_t)pos[i]-origin[i];
-      if((d>=STOP_COUNTS && goal[i]>0)||(d<=-STOP_COUNTS && goal[i]<0)) {
+      if((d>=STOP_COUNTS[i] && goal[i]>0)||(d<=-STOP_COUNTS[i] && goal[i]<0)) {
         stopBoth(true,"EVENT LIMIT DISARMED ZERO_REQUESTED");break;
       }
     }
@@ -315,7 +322,7 @@ void command(const char *s) {
     const int32_t next[2]={a,b};
     for(uint8_t i=0;i<2;++i) {
       const int64_t d=(int64_t)pos[i]-origin[i];
-      if((d>=STOP_COUNTS && next[i]>0)||(d<=-STOP_COUNTS && next[i]<0)) {
+      if((d>=STOP_COUNTS[i] && next[i]>0)||(d<=-STOP_COUNTS[i] && next[i]<0)) {
         stopBoth(true,"EVENT LIMIT DISARMED ZERO_REQUESTED");return;
       }
     }

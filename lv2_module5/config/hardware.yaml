@@ -22,13 +22,18 @@ firmware_limits:               # tracking_controller_2axis.ino 상수 (bench 설
   bus_watchdog_ticks: 10       # BUS_TICKS × 20 ms = 200 ms 모터 측 Bus_Watchdog (보드가 멈춰도 모터 정지)
   pan_neutral_encoder: 3078    # 수동 기준 자세 — 근거: results/logs/opencr/inspect_20261006_110144/manual_pose_calibration.md
   tilt_neutral_encoder_modulo: 0
-  startup_tolerance_counts: 20 # CHECK/HOLD 시 중립 허용 오차
-  stop_boundary_counts: 800     # STOP_COUNTS: 중립 ±80 counts(약 ±7°)에서 바깥 방향 명령 → EVENT LIMIT + DISARM
-  outer_fault_counts: 900      # OUTER_COUNTS: ±100 counts(약 ±8.8°) 넘으면 FAULT
-  # TODO(실기): 실제 기구 안전 회전 범위를 확인해 STOP/OUTER 값을 확정. 현재 값은 중립 부근 bench 시험용이며
-  #             추적 시 목표가 이 범위를 넘으면 세션이 LIMIT/FAULT로 끝난다.
-  #             참고(토크 OFF 수동 측정, 기구 한계 아님): Pan 좌 3482 / 우 2582, Tilt 위 3724 / 아래 4338
-  #             (manual_pose_calibration.md) → 수동 자세는 중립에서 약 ±400 counts.
+  startup_tolerance_counts: 50 # CHECK/HOLD; 기준 축은 기존 교정 중립 유지
+  arm_pose_exclusive_counts: 70 # 기존 ARM 조건 유지: abs(offset) < 70
+  hold_drift_counts: 20        # 기존 정지 자세 드리프트 보호 유지
+  requested_pan_half_range_deg: 120
+  requested_tilt_half_range_deg: 60
+  pan_stop_boundary_counts: 1345 # 약 118.21도; 정상 LIMIT 정지/해제
+  tilt_stop_boundary_counts: 662 # 약 58.18도
+  pan_outer_fault_counts: 1365   # 약 119.97도; 도달 시 FAULT
+  tilt_outer_fault_counts: 682   # 약 59.94도; 도달 시 FAULT
+  stop_margin_counts: 20         # 약 1.76도; 실제 제동 여유는 아직 검증하지 않음
+  # 범위는 시작 측정값이 아니라 교정 중립 Pan=3078, Tilt=0 modulo 4096 기준.
+  # 소프트웨어 경계는 기계적 한계 내 정지를 보장하지 않는다. 끝단 충돌 시험 금지.
 
 camera:
   model: Intel RealSense D435  # Product ID 0x0B07 (IMU 없는 D435). 상세: ros2_ws/.../config/camera.yaml 주석
