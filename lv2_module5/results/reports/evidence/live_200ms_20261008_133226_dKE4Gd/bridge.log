@@ -1,0 +1,3 @@
+[WARN] [1791434205.026170971] [opencr_node]: SERIAL LIVE: motor output firmware expected. Only STATUS sent; explicit /opencr/prepare and /opencr/arm required. Support the camera.
+[INFO] [1791434835.561991488] [opencr_node]: CSV_FINAL {"enabled": true, "accepted": 16792, "written": 16792, "dropped": 0, "error": "", "worker_alive": false, "closing": true}
+Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:427

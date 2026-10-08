@@ -1,41 +1,101 @@
-# OpenCR 펌웨어
+# OpenCR 펌웨어 (담당: 제어, 빌드·업로드는 통합과 공동)
 
-## 기준 버전과 통합 후보
+모든 빌드·업로드·시리얼 작업은 OpenCR가 USB로 연결된 **Raspberry Pi**에서 SSH로 수행한다.
+한 번에 한 프로그램만 포트를 연다 (opencr_node, miniterm, 시험 스크립트 동시 사용 금지).
 
-기존 tracking_controller는 단일 축 파서 기준 버전이다. 수정하지 않았다.
-pan_commission, tilt_hold_test, tilt_commission은 각 축에서 시험한 기록이다.
-새 tracking_controller_2axis는 두 축 통합 **후보**이며 기본 빌드는 MODE=DRY다.
-MODE=DRY에서 모터 버스 호출은 없고 피드백은 모의 값이다.
-기존 test_parser*.py는 새 두 축 프로토콜에 사용하지 않는다.
+## 1. 파일 분류
 
-## 문서
+| 경로 | 분류 | 역할 |
+|---|---|---|
+| `tracking_controller_2axis/` | **runtime** | 최종 Pan/Tilt 펌웨어. 기본 MODE=DRY, `ENABLE_MOTOR_OUTPUT=1`일 때만 MODE=LIVE |
+| `tests/test_2axis_dry.py` | test | 실제 보드 MODE=DRY 시리얼 시험 (MODE=LIVE면 스스로 거부) |
+| `tests/bench_2axis_once.py` | commissioning | LIVE 단일 VEL 1회 후 침묵 → 300 ms timeout 관찰 (`--execute-live` 필수) |
+| `tests/test_integrated_native.cpp`, `tests/native_stubs/` | test | 실제 .ino를 PC/Pi host에서 컴파일한 시나리오 시험 (가짜 Arduino/Workbench) |
+| `tests/native_pty.cpp` | test | DRY 펌웨어를 PTY에 연결하는 host 실행기 (ROS `test_serial_pty`, `test_serial_ros`가 사용) |
+| `commissioning/dxl_discovery/` | commissioning | 모터 ID·baud·프로토콜 스캔 (레지스터 쓰기 없음) |
+| `commissioning/dxl_inspect/` | commissioning | 모드·토크·위치 등 상태 조회 |
+| `commissioning/pan_commission/`, `tilt_hold_test/`, `tilt_commission/` | commissioning | 축별 첫 구동·Tilt 부하 유지 시험 (2026-10-06 기록의 원본 펌웨어) |
+| `legacy/tracking_controller/`, `legacy/tests/test_parser*.py` | legacy | 단일 속도 파서 기준 버전과 그 시험. **2축 runtime에 사용하지 않음** (`parser_baseline` 로그 근거로 보존) |
+| `patches/` | build | ARM GCC 14의 Arduino min/max 매크로 충돌 패치 (DynamixelWorkbench, OpenCR SDK) |
+| `opencr_source_commit.txt` | build | 패치를 적용한 OpenCR 보드 패키지 source commit |
 
-- [제어 인터페이스](../../docs/control_interface.md)
-- [시험 계획](../../docs/control_test_plan.md)
-- [설치·실행 절차](../../docs/integration_steps.md)
-- [후보 검증 범위](../../docs/integration_validation.md)
-- [하드웨어 기록](../../docs/hardware.md)
+Arduino는 스케치 디렉터리 하나만 빌드한다. `native_stubs`는 Arduino 라이브러리로 설치하지 않는다.
+상수(ID·baud·한계·timeout)의 근거와 사본: [`../../config/hardware.yaml`](../../config/hardware.yaml) — 상수를 바꾸면 같은 commit에서 함께 고친다.
+시리얼 프로토콜·안전 계층: [`../../docs/control_interface.md`](../../docs/control_interface.md)
 
-## 파일
+## 2. DRY 빌드·업로드·시험
 
-| 경로 | 역할 |
+사전조건: **모터 전원 OFF, 카메라 지지.** miniterm/opencr_node 종료.
+
+```bash
+REPO=$HOME/git/Lv2_EYE4_Assignment
+PORT=/dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00
+BUILD=$HOME/pa-opencr-build/build/tracking_controller_2axis_dry
+LOG=$REPO/lv2_module5/results/logs/opencr/integration_dry_$(date +%Y%m%d_%H%M%S)
+mkdir -p "$BUILD" "$LOG"; set -o pipefail
+arduino-cli compile --clean --fqbn OpenCR:OpenCR:OpenCR --build-path "$BUILD" \
+  "$REPO/lv2_module5/firmware/opencr/tracking_controller_2axis" 2>&1 | tee "$LOG/build.log"
+# 컴파일 성공 후에만
+opencr_ld "$PORT" 115200 "$BUILD/tracking_controller_2axis.ino.bin" 1 2>&1 | tee "$LOG/upload.log"
+# OpenCR reset 후
+python3 -u "$REPO/lv2_module5/firmware/opencr/tests/test_2axis_dry.py" --port "$PORT" 2>&1 | tee "$LOG/parser_2axis.log"
+```
+
+기대: `ALL TWO-AXIS DRY CHECKS PASSED`. 기록: `results/logs/opencr/integration_dry_20261006_140439/`.
+
+## 3. LIVE 빌드와 단일 명령 방향 시험
+
+사전조건: 2절 통과. 카메라를 받칠 사람이 옆에 있음. 두 축을 중립(Pan 3078±20, Tilt 0 mod 4096 ±20) 부근에 둠.
+전원·reset은 토크를 풀 수 있으므로 내내 지지한다. DYNAMIXEL 모드를 바꾸지 않는다. DRY와 다른 빌드 폴더를 쓴다.
+
+```bash
+BUILD=$HOME/pa-opencr-build/build/tracking_controller_2axis_live
+LOG=$REPO/lv2_module5/results/logs/opencr/integration_live_$(date +%Y%m%d_%H%M%S)
+mkdir -p "$BUILD" "$LOG"
+arduino-cli compile --clean --fqbn OpenCR:OpenCR:OpenCR \
+  --build-property 'compiler.cpp.extra_flags=-DENABLE_MOTOR_OUTPUT=1' --build-path "$BUILD" \
+  "$REPO/lv2_module5/firmware/opencr/tracking_controller_2axis" 2>&1 | tee "$LOG/build.log"
+opencr_ld "$PORT" 115200 "$BUILD/tracking_controller_2axis.ino.bin" 1 2>&1 | tee "$LOG/upload.log"
+```
+
+업로드 후 `python3 -m serial.tools.miniterm $PORT 115200`에서 `STATUS` → **`MODE=LIVE`** 확인 (DRY로 나오면 플래그가 적용되지 않은 것 — 중단하고 빌드 로그 확인).
+`CHECK` → `HOLD` → `EVENT STOPPED TORQUE_RETAINED` → `STATUS`가 `DISARMED GOAL=0,0 VEL=0,0 TORQUE=1,1`. 처짐·진동이 없는지 본 뒤 Ctrl+]로 닫는다 (토크 유지됨, 자리를 비우지 않는다).
+
+```bash
+python3 -u "$REPO/lv2_module5/firmware/opencr/tests/bench_2axis_once.py" --port "$PORT" --execute-live --case zero 2>&1 | tee "$LOG/zero.log"
+# zero 성공 후 한 번에 하나씩: pan-left, pan-right, tilt-up, tilt-down, both (각 성분 ±0.024 rad/s = 원시 1단위)
+```
+
+| case | 기대 동작 (카메라 뒤에서 정면 기준) |
 |---|---|
-| tracking_controller_2axis/ | 새 두 축 후보 |
-| tests/test_2axis_dry.py | 실제 보드 MODE=DRY 전용 시리얼 시험 |
-| tests/bench_2axis_once.py | 명시적 LIVE 한 번 명령, 300 ms timeout 관찰 |
-| tests/test_integrated_native.cpp | 실제 스케치 logic의 host-side 회귀 검사 |
-| tests/native_stubs/ | host-side 검사 전용 가짜 Arduino/Workbench |
-| tests/native_pty.cpp | DRY 시리얼 시험을 위한 host-side PTY 실행기 |
-| patches/ | 기존 GCC/Arduino min/max 호환성 패치 |
+| pan-left / pan-right | Pan 좌/우, Tilt 유지 |
+| tilt-up / tilt-down | Tilt 위/아래, Pan 유지 |
+| both | Pan 우 + Tilt 아래 |
 
-native_stubs는 Arduino 라이브러리로 설치하지 않는다.
-Arduino는 tracking_controller_2axis 디렉터리만 빌드한다.
+방향이 틀리거나 처짐·진동·FAULT가 있으면 중단한다. 각 시험은 VEL 1회 후 1초 침묵으로 300 ms 명령 timeout과 DISARM을 확인한다.
+2026-10-06 기록: 6개 케이스 성공 (`results/logs/opencr/integration_live_20261006_141057/test_notes.md`, `zero_retry_notes.md`).
+세션 끝: 카메라 지지 → miniterm `SUPPORTED_OFF` → `TORQUE_OFF_CONFIRMED`. 다음 세션은 reset + CHECK/HOLD부터. FAULT 후 자동 재ARM 없음.
 
-## 운용 주의점
+## 4. Host-side 시험 (보드·모터 없음)
 
-CHECK/HOLD는 명시적으로 수행하며, HOLD는 두 축 토크를 활성화한다.
-ARM은 HOLD 완료 이후에만 가능하다. ARM 다음에는 300 ms 안에 VEL이 필요하므로
-LIVE VEL 시험은 수동 타이핑 대신 제공된 짧은 실행기를 사용한다.
-STOP/DISARM/명령 timeout은 토크를 유지한다.
-카메라를 지지한 뒤 SUPPORTED_OFF를 사용한다. 포트 닫기는 토크 해제가 아니다.
-FAULT 후 토크/정지를 가정하지 말고 지지 후 해제 또는 전원을 차단한다.
+```bash
+cd $REPO/lv2_module5/firmware/opencr/tests
+g++ -std=c++17 -Wall -Wextra -Werror -I native_stubs test_integrated_native.cpp -o /tmp/native-dry && /tmp/native-dry
+g++ -std=c++17 -Wall -Wextra -Werror -DENABLE_MOTOR_OUTPUT=1 -I native_stubs test_integrated_native.cpp -o /tmp/native-live && /tmp/native-live
+# ROS PTY 시험용 DRY 펌웨어 실행 파일 (Linux)
+g++ -std=c++17 -Wall -Wextra -I native_stubs native_pty.cpp -o $HOME/pa-opencr-build/build/native_bridge/opencr_dry_pty
+ros2 run realsense_tracker test_serial_pty --firmware-executable $HOME/pa-opencr-build/build/native_bridge/opencr_dry_pty \
+  --output-dir <LOG>/pty --cycles 20 --tick-sec 0.01
+ros2 run realsense_tracker test_serial_ros --firmware-executable $HOME/pa-opencr-build/build/native_bridge/opencr_dry_pty \
+  --output-dir <LOG>/serial_ros
+```
+
+기대: `PASS native controller scenarios MODE=DRY` / `MODE=LIVE_STUB`, `ALL SERIAL PTY CORE CHECKS PASSED`, `ALL SERIAL ROS PTY CHECKS PASSED`.
+검사 범위: 두 값 중 하나라도 잘못되면 모터 쓰기·타이머 갱신 없음, 침묵·오류·STATUS에서도 timeout, 반복 ARM 거부, STOP/DISARM, millis rollover,
+두 번째 축 쓰기 실패 시 두 축 0 시도 후 FAULT 고정, FAULT 후 버스 중단, 피드백 실패, 위치 경계 정지, DRY에서 버스 호출 0회.
+host 시험은 USB·ARM toolchain·실제 SDK 지연·중력 부하·정지 거리를 재현하지 않는다 — 하드웨어 승인 근거로 쓰지 않는다.
+
+## 5. 아직 하지 않은 하드웨어 시험
+
+위치 경계 정지, 실제 정지 지연(마지막 명령 → 0 쓰기 → 속도 0 피드백), 모터 버스 통신 단절, 보드 멈춤 시 Bus_Watchdog, 피드백 실패.
+모터 케이블을 뽑거나 한계까지 반복 jog하는 즉흥 시험은 하지 않는다. 별도 절차를 설계한 뒤 수행한다.

@@ -1,0 +1,11 @@
+RUNNING observer pid=17084; timing in RAM; Ctrl+C once to save
+PHASE=BOOT reason= tracking=TRACKING
+PHASE=CHECKING reason= tracking=TRACKING
+PHASE=HOLDING reason= tracking=TRACKING
+PHASE=WAIT_HOLD reason= tracking=TRACKING
+PHASE=VERIFY_READY reason= tracking=TRACKING
+PHASE=READY reason= tracking=TRACKING
+PHASE=ARMING reason= tracking=TRACKING
+PHASE=VERIFY_ARM reason= tracking=TRACKING
+PHASE=ARMED reason= tracking=TRACKING
+60 SECONDS ARMED: request planned DISARM now; keep controller running.

@@ -1,0 +1,6 @@
+# tools/ 실행용 (노트북, ROS 없이). 라즈베리파이 ARM64에서 pyrealsense2는 Python 3.9/3.10/3.12용만 배포됨
+opencv-python==5.0.0.93
+numpy==2.5.3
+PyYAML==6.0.3
+ruamel.yaml==0.19.1
+pyrealsense2==2.58.4.10922

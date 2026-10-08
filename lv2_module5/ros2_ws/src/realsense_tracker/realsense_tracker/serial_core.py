@@ -1,15 +1,71 @@
-"""DRY-board-only asynchronous bridge; no automatic prepare, arm, or reconnect."""
+"""Raspberry Pi ↔ OpenCR USB 시리얼 bridge 상태 기계 (담당: 통합 + 제어) — ROS 없음
+
+역할
+  control_node의 PanTiltCommand(rad/s)를 OpenCR 펌웨어(tracking_controller_2axis)의 ASCII 줄 명령
+  (STATUS / CHECK / HOLD / ARM / VEL p t / STOP / DISARM)으로 바꾸고, 보드의 STATE 응답을 검사한다.
+  opencr_node.py가 10 ms 타이머로 tick()을 호출하고 ROS 명령을 receive_command()로 넘긴다.
+
+DRY / LIVE
+  expected_mode='DRY'  : MODE=DRY 펌웨어만 허용 (모터 버스 호출 없음, 피드백은 모의 값)
+  expected_mode='LIVE' : MODE=LIVE 펌웨어만 허용 (실제 모터 구동). opencr_node가 명시적 설정
+                         (expected_board_mode=LIVE + enable_live_hardware=true)일 때만 이 값을 쓴다.
+  보드가 보고한 MODE가 기대와 다르면 즉시 FAULT (명령 전송 없음).
+
+세션 단계 (phase)
+  CONNECTING → (STATE BOOT 확인) BOOT
+  BOOT --prepare()--> CHECKING → HOLDING → WAIT_HOLD → VERIFY_READY → READY   (토크 ON, 속도 0)
+  READY --arm()--> ARMING → VERIFY_ARM → ARMED   (신선한 stop=false 명령이 있을 때만, 자동 ARM 없음)
+  ARMED: 신선한 명령마다 VEL 또는 STOP 1회 전송. stop=true는 STOP(논리적 ARM 유지, 정상 목표 소실용)
+  ARMED/READY --disarm()--> DISARMING → WAIT_DISARM → VERIFY_DISARM → READY
+  어떤 단계든 이상 → FAULT (래치). 자동 재연결·자동 재ARM 없음. 새 세션은 보드 reset 후 prepare부터.
+
+FAULT가 되는 경우 (모두 시험됨: test/test_serial_core.py)
+  - ROS 명령이 COMMAND_AGE(기본 0.15초) 넘게 끊김 / 오래된·역순·범위 밖 명령 (ARM 중)
+  - 보드 응답 ACK 미수신, STATUS 0.4초 미수신, 보드 피드백 나이 100 ms 초과, 보드 재부팅
+  - 보드 EVENT TIMEOUT / EVENT LIMIT / FAULT / ERR, 형식이 깨진 응답, 시리얼 읽기·쓰기 오류
+  FAULT 시 보드가 MODE 확인된 상태면 DISARM을 한 번 시도한다 (best effort, 토크 유지).
+  최종 안전은 펌웨어의 300 ms 명령 timeout과 모터 Bus_Watchdog이 보장한다 (bridge가 죽어도 동작).
+"""
 import math
 import os
 import re
-import termios
 import time
-import tty
+
+try:  # Linux/Pi 전용 시리얼 설정. Windows 등에서도 상태 기계 단위 시험은 돌 수 있게 한다.
+    import termios
+    import tty
+    SERIAL_ERRORS = (OSError, termios.error)
+except ImportError:  # pragma: no cover - 비 POSIX 환경
+    termios = tty = None
+    SERIAL_ERRORS = (OSError,)
+
+from .control_core import MAX_VELOCITY_RAD_S
+
+# 펌웨어 RAD_S_PER_UNIT (XM430 Goal_Velocity 1 단위 = 0.229 rpm) — 영속도 전환 판정에만 사용
+RAD_S_PER_UNIT = 0.229 * 2 * math.pi / 60
+BOARD_MODES = ('DRY', 'LIVE')
+
+
+def check_mode(dry_run, expected_board_mode, enable_live_hardware):
+    """시리얼 모드 설정 조합 검사. 반환: 'DRY' 또는 'LIVE'. 모호한 조합은 RuntimeError."""
+    if expected_board_mode == 'DRY':
+        if dry_run is not True or enable_live_hardware is not False:
+            raise RuntimeError('DRY board requires dry_run=true and enable_live_hardware=false')
+        return 'DRY'
+    if expected_board_mode == 'LIVE':
+        if dry_run is not False or enable_live_hardware is not True:
+            raise RuntimeError('LIVE board requires dry_run=false and enable_live_hardware=true '
+                               '(explicit hardware confirmation)')
+        return 'LIVE'
+    raise RuntimeError('expected_board_mode must be DRY or LIVE')
 
 
 class PosixSerial:
-    """Linux/Pi transport: nonblocking 115200 8N1 with exclusive ownership."""
-    def __init__(self, path):
+    """Linux/Pi transport: nonblocking 8N1 with exclusive ownership. baudrate = opencr_node usb_serial_baudrate."""
+    def __init__(self, path, baudrate=115200):
+        if termios is None:raise OSError('POSIX serial (termios) is required; run on Linux/Raspberry Pi')
+        speed = getattr(termios, f'B{int(baudrate)}', None)
+        if speed is None:raise ValueError(f'Unsupported serial baudrate: {baudrate}')
         self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
         try:
             termios.tcgetattr(self.fd)
@@ -22,7 +78,7 @@ class PosixSerial:
             attrs[2] &= ~(termios.PARENB | termios.CSTOPB | termios.CSIZE)
             attrs[2] |= termios.CS8
             if hasattr(termios, 'CRTSCTS'):attrs[2] &= ~termios.CRTSCTS
-            attrs[4] = attrs[5] = termios.B115200
+            attrs[4] = attrs[5] = speed
             termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
             termios.tcflush(self.fd, termios.TCIOFLUSH)
         except Exception:
@@ -60,18 +116,25 @@ def parse_state(line):
 
 class SerialBridge:
     """Tick from a 10 ms timer. Every VEL/STOP uses a new, fresh ROS message."""
-    COMMAND_AGE = 0.15
-    ACK_TIMEOUT = 0.20
-    STATUS_PERIOD = 0.10
-    STATUS_MAX_AGE = 0.40
+    COMMAND_AGE = 0.15     # ROS 명령 최대 나이(초): 원본 시각 기준 + 수신 후 유효 기간
+    ACK_TIMEOUT = 0.20     # 명령 1건의 ACK 대기
+    STATUS_PERIOD = 0.10   # STATUS 조회 주기 (정지 확인 중에는 0.02초)
+    STATUS_MAX_AGE = 0.40  # 이 시간 동안 STATE가 안 오면 FAULT
+    STOP_KEEPALIVE = 0.15  # 정지가 느릴 때 STOP 재전송 간격 (펌웨어 명령 timeout 300 ms의 절반)
 
-    def __init__(self, transport, log=None, clock=time.monotonic):
+    def __init__(self, transport, log=None, clock=time.monotonic, expected_mode='DRY', command_age=None):
+        if expected_mode not in BOARD_MODES:raise ValueError('expected_mode must be DRY or LIVE')
+        if command_age is not None:
+            # Pi 내부 DDS 전달·실행 지연 여유. 펌웨어 300 ms timeout보다 짧아야 한다.
+            if not 0<command_age<0.3:raise ValueError('command_age must be in (0, 0.3) seconds')
+            self.COMMAND_AGE=command_age
+        self.expected_mode=expected_mode
         self.transport=transport;self.clock=clock;self.log=log or (lambda *args:None)
         self.phase='CONNECTING';self.reason='';self.board=None;self.mode_verified=False
         self.pending=None;self.buffer=b'';self.last_status=None;self.last_poll=0.0
         self.last_stamp=None;self.latest=None;self.sequence=0;self.sent_sequence=0
         self.stopping=False;self.previous_goal=(0,0);self.closed=False
-        self.phase_deadline=None
+        self.phase_deadline=None;self.last_command_tx=0.0
         self.send('STATUS', 'STATUS')
 
     def emit(self, direction, line):self.log(self.clock(), direction, line)
@@ -80,11 +143,12 @@ class SerialBridge:
         if self.closed:return False
         if self.pending:raise RuntimeError('Only one outstanding transaction permitted')
         try:self.transport.write((command+'\n').encode('ascii'))
-        except (OSError, termios.error) as exc:
+        except SERIAL_ERRORS as exc:
             self.fail('TRANSPORT_WRITE: '+str(exc), try_stop=False);return False
         self.emit('TX',command)
         self.pending=(expected,self.clock()+(timeout or self.ACK_TIMEOUT))
         if expected=='STATUS':self.last_poll=self.clock()
+        if expected in ('ARM','VEL','STOP'):self.last_command_tx=self.clock()  # these refresh the board command timer
         return True
 
     def fail(self, reason, try_stop=True):
@@ -95,11 +159,13 @@ class SerialBridge:
         if try_stop and self.mode_verified and not self.closed:
             try:
                 self.transport.write(b'DISARM\n');self.emit('TX','DISARM')
-            except (OSError, termios.error):pass
+            except SERIAL_ERRORS:pass
 
     def receive_command(self, stop, pan, tilt, stamp_ns, ros_now_ns):
+        """ROS 명령 1건. 원본 시각이 미래/너무 오래됨/역순이거나 속도가 상한 밖이면 거부.
+        stamp(control_node)와 ros_now(opencr_node)는 모두 같은 Raspberry Pi의 시계다."""
         age=(ros_now_ns-stamp_ns)/1e9
-        valid=all(math.isfinite(v) and abs(v)<=0.05+1e-8 for v in (pan,tilt))
+        valid=all(math.isfinite(v) and abs(v)<=MAX_VELOCITY_RAD_S+1e-8 for v in (pan,tilt))
         ordered=self.last_stamp is None or stamp_ns>self.last_stamp
         if self.phase=='FAULT':return False
         if not valid or stamp_ns<=0 or not 0<=age<=self.COMMAND_AGE or not ordered:
@@ -109,13 +175,16 @@ class SerialBridge:
         self.last_stamp=stamp_ns;self.sequence+=1
         # Account for both receipt age and source age even without newer callbacks.
         deadline=self.clock()+min(self.COMMAND_AGE,self.COMMAND_AGE-age)
-        self.latest=(bool(stop),max(-.05,min(.05,pan)),max(-.05,min(.05,tilt)),deadline,self.sequence)
+        limit=MAX_VELOCITY_RAD_S
+        self.latest=(bool(stop),max(-limit,min(limit,pan)),max(-limit,min(limit,tilt)),deadline,self.sequence)
         return True
 
     def prepare(self):
-        if self.phase!='BOOT':return False,'Requires a fresh DRY BOOT; reset firmware first'
-        self.phase='CHECKING';self.phase_deadline=self.clock()+0.8
-        self.send('CHECK','CHECK',0.6);return True,'CHECK/HOLD requested; wait for READY status'
+        """운영자 명시 요청: CHECK(모델·모드·중립 자세 확인) → HOLD(영속도로 토크 ON)."""
+        if self.phase!='BOOT':return False,'Requires a fresh BOOT state; reset firmware first'
+        # LIVE CHECK blocks the board ~1.25 s (bus init + ping incl. Protocol 1.0 fallback); no STATE during it.
+        self.phase='CHECKING';self.phase_deadline=self.clock()+2.5
+        self.send('CHECK','CHECK',2.0);return True,'CHECK/HOLD requested; wait for READY status'
 
     def arm(self):
         if self.phase!='READY' or self.pending:return False,'Requires READY with no outstanding transaction'
@@ -133,7 +202,8 @@ class SerialBridge:
     def on_state(self, line):
         try:board=parse_state(line)
         except ValueError:self.fail('MALFORMED_STATE');return
-        if board['mode']!='DRY':self.fail('MODE_MISMATCH: only DRY firmware supported',try_stop=False);return
+        if board['mode']!=self.expected_mode:
+            self.fail(f"MODE_MISMATCH: board {board['mode']}, expected {self.expected_mode}",try_stop=False);return
         if self.board and board['t_ms']<self.board['t_ms'] and self.board['t_ms']-board['t_ms']<2**31:
             self.fail('BOARD_REBOOT');return
         self.mode_verified=True;self.board=board;self.last_status=self.clock()
@@ -185,6 +255,8 @@ class SerialBridge:
         if not self.pending:return
         expected=self.pending[0]
         if expected=='CHECK' and line=='CHECK_OK BOTH_TORQUES_OFF':
+            # CHECK_OK proves the board is responsive; restart the STATUS age clock paused during CHECKING.
+            self.last_status=self.clock()
             self.pending=None;self.phase='HOLDING';self.send('HOLD','HOLD');return
         if expected=='HOLD' and line=='ACK HOLD ZERO_REQUESTED':
             self.pending=None;self.phase='WAIT_HOLD';self.phase_deadline=self.clock()+0.65;return
@@ -201,7 +273,7 @@ class SerialBridge:
     def tick(self):
         if self.closed or self.phase=='FAULT':return
         try:data=self.transport.read()
-        except (OSError,termios.error) as exc:self.fail('TRANSPORT_READ: '+str(exc));return
+        except SERIAL_ERRORS as exc:self.fail('TRANSPORT_READ: '+str(exc));return
         self.buffer+=data
         if len(self.buffer)>4096:self.fail('SERIAL_BUFFER_OVERFLOW');return
         while b'\n' in self.buffer:
@@ -215,7 +287,7 @@ class SerialBridge:
         if self.phase_deadline and now>=self.phase_deadline:self.fail('SESSION_TRANSITION_TIMEOUT');return
         if self.phase in ('ARMING','VERIFY_ARM','ARMED'):
             if not self.latest or now>=self.latest[3]:self.fail('ROS_COMMAND_TIMEOUT');return
-        if self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
+        if self.phase!='CHECKING' and self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
             self.fail('STATUS_TIMEOUT');return
         if self.pending:
             if now>=self.pending[1]:self.fail('RESPONSE_TIMEOUT: '+self.pending[0])
@@ -228,31 +300,37 @@ class SerialBridge:
             if now>=deadline:self.fail('ROS_COMMAND_TIMEOUT');return
             self.sent_sequence=sequence
             if self.stopping:
-                # Repeating STOP restarts the board's completion window.
-                # Poll STATUS above; never send VEL until completion is confirmed.
+                # Never send VEL until completion is confirmed (STATUS polled above).
+                # A STOP after the board finished would restart its completion window, so repeat STOP
+                # only while the board still reports STOPPING (firmware keeps stopAt/quiet then) and the
+                # board's 300 ms command timer would otherwise expire during a slow stop.
+                if (self.board and self.board['state']=='STOPPING'
+                        and now-self.last_command_tx>=self.STOP_KEEPALIVE):
+                    self.send('STOP','STOP')
                 return
             if stop:
                 self.stopping=True;self.send('STOP','STOP')
             else:
-                next_goal=(int(math.floor(abs(pan)/.0239808239+.5))* (1 if pan>=0 else -1),
-                           int(math.floor(abs(tilt)/.0239808239+.5))* (1 if tilt>=0 else -1))
+                # 펌웨어와 같은 반올림으로 원시 목표 속도를 예측: 0으로 바뀌면 정지 확인 단계로 들어간다.
+                next_goal=(int(math.floor(abs(pan)/RAD_S_PER_UNIT+.5))* (1 if pan>=0 else -1),
+                           int(math.floor(abs(tilt)/RAD_S_PER_UNIT+.5))* (1 if tilt>=0 else -1))
                 if next_goal==(0,0) and self.previous_goal!=(0,0):self.stopping=True
                 self.previous_goal=next_goal
                 self.send(f'VEL {pan:.6f} {tilt:.6f}','VEL')
             return
         if self.mode_verified and now-self.last_poll>=(0.02 if self.stopping else self.STATUS_PERIOD):
             self.send('STATUS','STATUS')
-        if self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
+        if self.phase!='CHECKING' and self.last_status is not None and now-self.last_status>=self.STATUS_MAX_AGE:
             self.fail('STATUS_TIMEOUT')
 
     def snapshot(self):
         return dict(phase=self.phase,reason=self.reason,serial_opened=not self.closed,
-                    expected_mode='DRY',board=self.board,
+                    expected_mode=self.expected_mode,board=self.board,
                     board_receipt_age_sec=None if self.last_status is None else self.clock()-self.last_status)
 
     def close(self):
         if self.closed:return
         if self.mode_verified:
             try:self.transport.write(b'DISARM\n');self.emit('TX','DISARM')
-            except (OSError,termios.error):pass
+            except SERIAL_ERRORS:pass
         self.transport.close();self.closed=True

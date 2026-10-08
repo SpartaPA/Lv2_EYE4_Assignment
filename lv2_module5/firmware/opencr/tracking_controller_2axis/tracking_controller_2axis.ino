@@ -1,4 +1,25 @@
-// Candidate integrated controller. Physical limits/stopping require bench validation.
+// tracking_controller_2axis — OpenCR Pan/Tilt 최종 런타임 펌웨어 (담당: 제어)
+//
+// 입력: Raspberry Pi opencr_node(serial_core.py)의 USB 시리얼 ASCII 줄 명령, 115200 8N1, LF 종료, 최대 63자
+//   STATUS | CHECK | HOLD | ARM | VEL <pan_rad_s> <tilt_rad_s> | STOP | DISARM | SUPPORTED_OFF
+// 출력: STATE/ACK/ERR/EVENT/FAULT 줄 + 두 XM430-W350 (Pan ID 11, Tilt ID 12, 1 Mbps, Protocol 2.0, Velocity Mode)
+//
+// 이 계층의 책임 (Pi의 control_node는 P제어·방향·속도 상한·deadband·상태·target timeout 담당)
+//   - 단위 변환: rad/s → Goal_Velocity 원시 단위(0.229 rpm). 부호는 이미 모터 원시 부호 (방향 재적용 없음)
+//   - 속도 상한: |VEL| > MAX_RAD_S(0.05) → ERR RANGE, 두 값 중 하나라도 잘못되면 둘 다 거부
+//   - 각도 경계: 실제 엔코더 위치 기준. 중립 ±STOP_COUNTS에서 바깥 방향 명령 → EVENT LIMIT + DISARM,
+//               ±OUTER_COUNTS 초과 → FAULT (bench 값, 실제 기구 범위 확정 TODO — config/hardware.yaml)
+//   - 명령 timeout: ARM 중 마지막 유효 명령 후 COMMAND_MS(300 ms) → 두 축 0 + DISARM (토크 유지)
+//               → control_node·opencr_node·USB 어느 쪽이 멈춰도 마지막 속도로 계속 돌지 않는다
+//   - 모터 Bus_Watchdog: BUS_TICKS(10 × 20 ms = 200 ms) 동안 버스 패킷이 없으면 모터 스스로 정지 (보드 멈춤 대비)
+//   - 고장 처리: 읽기·쓰기 실패, 하드웨어 오류, 위치 급변, 예상 밖 속도, 정지 미확인 → FAULT 래치,
+//               두 축 0 쓰기 1회 후 버스 통신 중단(watchdog 만료 유도). 자동 복구 없음 — reset + CHECK 필요
+//
+// DRY / LIVE (컴파일 플래그, 기본 DRY):
+//   ENABLE_MOTOR_OUTPUT=0 (기본) → MODE=DRY: 모터 버스를 전혀 호출하지 않음, 피드백은 모의 값
+//   ENABLE_MOTOR_OUTPUT=1        → MODE=LIVE: 실제 구동. arduino-cli --build-property로만 켠다 (README)
+// 정상 정지(STOP/DISARM/timeout)는 영속도 + 토크 유지다 (Tilt 낙하 방지). 토크 해제는 SUPPORTED_OFF만.
+// 아래 상수의 실측 근거와 사본: lv2_module5/config/hardware.yaml (펌웨어 상수를 바꾸면 함께 수정)
 #include <Arduino.h>
 #ifdef min
 #undef min
@@ -23,19 +44,30 @@ extern "C" {
 #endif
 
 DynamixelWorkbench dxl;
-const uint8_t IDS[2] = {11, 12};
-const uint32_t COMMAND_MS = 300, POLL_MS = 20, BUS_TICKS = 10;
-const float MAX_RAD_S = 0.05f;
+const uint8_t IDS[2] = {11, 12};  // {Pan, Tilt} — dxl_discovery 스캔으로 확인
+const uint32_t COMMAND_MS = 300, POLL_MS = 20, BUS_TICKS = 10;  // 명령 timeout, 피드백 주기, 모터 watchdog(×20 ms)
+const float MAX_RAD_S = 0.10f;
 const float RAD_S_PER_UNIT = 0.229f * 6.28318530718f / 60.0f;
 // Velocity input is already motor-native sign: positive pan left, tilt down.
 // Reference pose: manually verified pan=3078, tilt=0 modulo 4096.
-const int32_t STOP_COUNTS = 80, OUTER_COUNTS = 100;
+const int32_t PAN_NEUTRAL = 1043;
+const int32_t TILT_NEUTRAL = 2161;
+const int32_t NEUTRAL_TOL_COUNTS = 100;
+const int32_t STOP_COUNTS[2] = {1345, 662};
+const int32_t OUTER_COUNTS[2] = {1365, 682};
+const int32_t HOLD_DRIFT_COUNTS = 50;
+const int32_t ARM_POSE_TOLERANCE_COUNTS = 120;
+#ifndef ACCEPT_STATIONARY_POSE_AS_ORIGIN
+#define ACCEPT_STATIONARY_POSE_AS_ORIGIN 1
+#endif
 
 bool ready = false, holding = false, armed = false, faulted = false;
 bool stopping = false, baseline = false;
 bool known[2] = {false, false};
 int32_t pos[2] = {0, 0}, vel[2] = {0, 0}, torque[2] = {0, 0};
-int32_t origin[2] = {3078, 0}, previous[2] = {0, 0}, goal[2] = {0, 0};
+int32_t origin[2] = {PAN_NEUTRAL, TILT_NEUTRAL},
+        previous[2] = {0, 0},
+        goal[2] = {0, 0};
 int32_t holdAnchor[2] = {0, 0};
 uint32_t lastCommand = 0, lastPoll = 0, sampleAt = 0, stopAt = 0;
 uint8_t quiet = 0;
@@ -50,7 +82,8 @@ void reply(const char *s) {
   uint8_t packet[256];
   size_t n = strlen(s);
   if (n > sizeof(packet)-2) return;
-  memcpy(packet, s, n); packet[n++]='\n';
+  memcpy(packet, s, n);
+  packet[n++] = '\n';
   (void)CDC_Itf_Write(packet, (uint32_t)n);
 }
 bool readItem(uint8_t axis, const char *key, int32_t &v) {
@@ -93,6 +126,12 @@ bool goals(int32_t p, int32_t t) {
 int32_t neutralOffset(int32_t p) {
   int32_t x=p%4096; if(x<0)x+=4096; if(x>=2048)x-=4096; return x;
 }
+int32_t relativePosition(uint8_t axis, int32_t value) {
+  int32_t d=value-origin[axis];
+  if (d > 2048) d-=4096;
+  if (d < -2048) d+=4096;
+  return d;
+}
 bool feedback() {
 #if ENABLE_MOTOR_OUTPUT
   for(uint8_t i=0;i<2;++i) {
@@ -106,14 +145,14 @@ bool feedback() {
       fail("TORQUE_OR_BUS_WATCHDOG"); return false;
     }
     if(baseline) {
-      const int64_t d=(int64_t)pos[i]-origin[i];
+      const int64_t d=relativePosition(i,pos[i]);
       const int64_t step=(int64_t)pos[i]-previous[i];
-      if(d<=-OUTER_COUNTS || d>=OUTER_COUNTS) { fail("OUTER_BOUND"); return false; }
+      if(d<=-OUTER_COUNTS[i] || d>=OUTER_COUNTS[i]) { fail("OUTER_BOUND"); return false; }
       if(step>30 || step< -30) { fail("POSITION_DISCONTINUITY"); return false; }
       if(vel[i]>5 || vel[i]< -5) { fail("UNEXPECTED_SPEED"); return false; }
       if(holding && !stopping && goal[i]==0) {
         const int64_t h=(int64_t)pos[i]-holdAnchor[i];
-        if(h>20 || h< -20) { fail("HOLD_DRIFT"); return false; }
+        if(h>HOLD_DRIFT_COUNTS || h< -HOLD_DRIFT_COUNTS) { fail("HOLD_DRIFT"); return false; }
       }
     }
     previous[i]=pos[i];
@@ -159,10 +198,22 @@ void check() {
   pos[0]=3078;pos[1]=4096;
 #endif
   if(!feedback())return;
-  if(labs(pos[0]-3078)>20 || labs(neutralOffset(pos[1]))>20 || vel[0]!=0 || vel[1]!=0) {
-    fail("SUPPORT_AT_NEUTRAL");return;
+  if(vel[0] != 0 || vel[1] != 0) {
+    fail("SUPPORT_AT_NEUTRAL");
+    return;
   }
-  origin[0]=3078; origin[1]=pos[1]-neutralOffset(pos[1]);
+#if ACCEPT_STATIONARY_POSE_AS_ORIGIN
+  origin[0] = pos[0];
+  origin[1] = pos[1];
+#else
+  if(labs(pos[0] - PAN_NEUTRAL) > NEUTRAL_TOL_COUNTS ||
+     labs(pos[1] - TILT_NEUTRAL) > NEUTRAL_TOL_COUNTS) {
+    fail("SUPPORT_AT_NEUTRAL");
+    return;
+  }
+  origin[0] = PAN_NEUTRAL;
+  origin[1] = TILT_NEUTRAL;
+#endif
   for(uint8_t i=0;i<2;++i) {previous[i]=pos[i];holdAnchor[i]=pos[i];}
   baseline=true;ready=true;
   reply("CHECK_OK BOTH_TORQUES_OFF");
@@ -171,7 +222,7 @@ void hold() {
   if(!ready || holding || faulted) {reply("ERR HOLD_STATE");return;}
   // Still physically supported. Refuse a changed pose after CHECK.
   if(!feedback())return;
-  if(labs(pos[0]-origin[0])>20 || labs(pos[1]-origin[1])>20 || vel[0]!=0 || vel[1]!=0) {
+  if(labs(relativePosition(0,pos[0]))>NEUTRAL_TOL_COUNTS || labs(relativePosition(1,pos[1]))>NEUTRAL_TOL_COUNTS || vel[0]!=0 || vel[1]!=0) {
     fail("HOLD_POSE");return;
   }
 #if ENABLE_MOTOR_OUTPUT
@@ -238,7 +289,7 @@ void service() {
   if(!stopping) {
     for(uint8_t i=0;i<2;++i) {
       int64_t d=(int64_t)pos[i]-origin[i];
-      if((d>=STOP_COUNTS && goal[i]>0)||(d<=-STOP_COUNTS && goal[i]<0)) {
+      if((d>=STOP_COUNTS[i] && goal[i]>0)||(d<=-STOP_COUNTS[i] && goal[i]<0)) {
         stopBoth(true,"EVENT LIMIT DISARMED ZERO_REQUESTED");break;
       }
     }
@@ -274,7 +325,7 @@ void command(const char *s) {
     if(!holding||stopping){reply("ERR NOT_HOLDING");return;}
     if(armed){reply("ERR ALREADY_ARMED");return;}
     if(!feedback()||faulted)return;
-    for(uint8_t i=0;i<2;++i)if(labs(pos[i]-origin[i])>=70||vel[i]!=0) {
+    for(uint8_t i=0;i<2;++i)if(labs(relativePosition(i,pos[i]))>=ARM_POSE_TOLERANCE_COUNTS||vel[i]!=0) {
       reply("ERR ARM_POSE_OR_SPEED");return;
     }
     armed=true;lastCommand=millis();reply("ACK ARM");return;
@@ -293,8 +344,8 @@ void command(const char *s) {
     timeout();if(!armed||faulted||stopping){reply("ERR DISARMED");return;}
     const int32_t next[2]={a,b};
     for(uint8_t i=0;i<2;++i) {
-      const int64_t d=(int64_t)pos[i]-origin[i];
-      if((d>=STOP_COUNTS && next[i]>0)||(d<=-STOP_COUNTS && next[i]<0)) {
+      const int64_t d=relativePosition(i,pos[i]);
+      if((d>=STOP_COUNTS[i] && next[i]>0)||(d<=-STOP_COUNTS[i] && next[i]<0)) {
         stopBoth(true,"EVENT LIMIT DISARMED ZERO_REQUESTED");return;
       }
     }

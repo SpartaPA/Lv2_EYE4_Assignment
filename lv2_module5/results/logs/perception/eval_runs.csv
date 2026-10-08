@@ -1,0 +1,3 @@
+run_id,scene,frames_saved,duration_s,interval_s,target_rate_hz,hsv_lower,hsv_upper,min_area_ratio,camera,note
+visible_20261006_104850,visible,30,14.5,0.50,29.9,"[93, 120, 35]","[130, 255, 255]",0.002,640x480@30,"거리 약 30~40cm, 실내 조명, 목표 이동"
+empty_20261006_104942,empty,10,9.0,1.00,30.0,"[93, 120, 35]","[130, 255, 255]",0.002,640x480@30,"목표 없음, 같은 배경"

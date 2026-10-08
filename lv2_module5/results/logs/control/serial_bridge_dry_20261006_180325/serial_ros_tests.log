@@ -1,0 +1,23 @@
+PROCESSES controller=5085 bridge=5084 firmware=5083
+SERVICE CHECK/HOLD requested; wait for READY status
+SERVICE ARM requested; wait for ARMED confirmation
+PASS serial ROS 1 center
+PASS serial ROS 2 x +0.4
+PASS serial ROS 3 x -0.4
+PASS serial ROS 4 y +0.4
+PASS serial ROS 5 y -0.4
+PASS serial ROS 6 no detection -> STOP, arming retained
+PASS normal three-frame recovery -> fresh VEL without another ARM
+PASS serial ROS 7 target silence -> LOST and STOP
+Traceback (most recent call last):
+  File "/home/pa44/git/Lv2_EYE4_Assignment/lv2_module5/ros2_ws/install/realsense_tracker/lib/realsense_tracker/test_serial_ros", line 33, in <module>
+    sys.exit(load_entry_point('realsense-tracker', 'console_scripts', 'test_serial_ros')())
+             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/pa44/git/Lv2_EYE4_Assignment/lv2_module5/ros2_ws/build/realsense_tracker/realsense_tracker/test_serial_ros.py", line 99, in main
+    wait(lambda:states[-1]=='TRACKING' and reports[-1]['board']['goal']==[-2,0],(.4,0,.1))
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pa44/git/Lv2_EYE4_Assignment/lv2_module5/ros2_ws/build/realsense_tracker/realsense_tracker/test_serial_ros.py", line 65, in wait
+    if not allow_fault and reports and reports[-1]['phase']=='FAULT':raise AssertionError(reports[-1])
+                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'phase': 'FAULT', 'reason': 'BOARD_ERR STOPPING', 'serial_opened': True, 'expected_mode': 'DRY', 'board': {'state': 'STOPPING', 'mode': 'DRY', 'armed': 1, 'goal': [0, 0], 'pos': [3078, 4096], 'vel': [0, 0], 'torque': [1, 1], 'age_ms': 10, 't_ms': 4092}, 'board_receipt_age_sec': 0.09954029999971681}
+[ros2run]: Process exited with failure 1

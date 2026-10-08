@@ -1,0 +1,14 @@
+PROCESSES controller=5582 bridge=5581 firmware=5580
+SERVICE CHECK/HOLD requested; wait for READY status
+SERVICE ARM requested; wait for ARMED confirmation
+PASS serial ROS 1 center
+PASS serial ROS 2 x +0.4
+PASS serial ROS 3 x -0.4
+PASS serial ROS 4 y +0.4
+PASS serial ROS 5 y -0.4
+PASS serial ROS 6 no detection -> STOP, arming retained
+PASS normal three-frame recovery -> fresh VEL without another ARM
+PASS serial ROS 7 target silence -> LOST and STOP
+SERVICE Requires READY with no outstanding transaction
+PASS controller termination -> DISARM attempt, latched command timeout, no re-arm
+ALL SERIAL ROS PTY CHECKS PASSED; FIRMWARE_MODE=DRY

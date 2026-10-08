@@ -1,0 +1,11 @@
+scene,idx,time_s,stamp,raw_image,det_image,node_detected,ex,ey,area_ratio,human_ok,note
+empty,1,0.00,1791251390.262265869,results/images/evaluation/empty_20261006_104942/01_raw.png,results/images/evaluation/empty_20261006_104942/01_det.png,0,0.0000,0.0000,0.00000,1,
+empty,2,1.02,1791251391.262952148,results/images/evaluation/empty_20261006_104942/02_raw.png,results/images/evaluation/empty_20261006_104942/02_det.png,0,0.0000,0.0000,0.00000,1,
+empty,3,2.01,1791251392.263658447,results/images/evaluation/empty_20261006_104942/03_raw.png,results/images/evaluation/empty_20261006_104942/03_det.png,0,0.0000,0.0000,0.00000,1,
+empty,4,3.02,1791251393.264336182,results/images/evaluation/empty_20261006_104942/04_raw.png,results/images/evaluation/empty_20261006_104942/04_det.png,0,0.0000,0.0000,0.00000,1,
+empty,5,4.02,1791251394.265015869,results/images/evaluation/empty_20261006_104942/05_raw.png,results/images/evaluation/empty_20261006_104942/05_det.png,0,0.0000,0.0000,0.00000,1,
+empty,6,5.02,1791251395.265692871,results/images/evaluation/empty_20261006_104942/06_raw.png,results/images/evaluation/empty_20261006_104942/06_det.png,0,0.0000,0.0000,0.00000,1,
+empty,7,6.02,1791251396.266618896,results/images/evaluation/empty_20261006_104942/07_raw.png,results/images/evaluation/empty_20261006_104942/07_det.png,0,0.0000,0.0000,0.00000,1,
+empty,8,7.02,1791251397.267395264,results/images/evaluation/empty_20261006_104942/08_raw.png,results/images/evaluation/empty_20261006_104942/08_det.png,0,0.0000,0.0000,0.00000,1,
+empty,9,8.02,1791251398.268133545,results/images/evaluation/empty_20261006_104942/09_raw.png,results/images/evaluation/empty_20261006_104942/09_det.png,0,0.0000,0.0000,0.00000,1,
+empty,10,9.02,1791251399.268860107,results/images/evaluation/empty_20261006_104942/10_raw.png,results/images/evaluation/empty_20261006_104942/10_det.png,0,0.0000,0.0000,0.00000,1,
