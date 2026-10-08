@@ -117,7 +117,7 @@ class PerceptionNode(Node):
         cam_path = params["camera_config"]
         if not cam_path:
             raise ConfigError("camera_config 파라미터가 비어 있음 → "
-                              "-p camera_config:=<realsense_tracker 패키지 config/camera.yaml 경로> 로 지정하세요")
+                              "-p camera_config:=<lv2_module5/config/camera.yaml 경로> 로 지정하세요")
         try:
             topics = load_camera_topics(cam_path)
         except OSError as e:
