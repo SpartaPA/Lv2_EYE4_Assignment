@@ -1,12 +1,21 @@
-# verification logs (문제 3·4·5)
+# 검증 기록 — 2026-10-08
 
-| 파일 | 만드는 방법 | 내용 |
-|---|---|---|
-| `<run_id>.csv` | `tools/tracking_logger.py --run-id <run_id>` | /target 프레임마다 ex·ey·면적비·상태·명령 (실시간 또는 bag 재분석) |
-| `recovery_trials.csv` | 사람이 영상·CSV를 보고 작성 | 2초 가림 5회: 가림 시작·재등장·TRACKING 복귀 시각, 복구 시간, 성공 여부 |
-| `interruption_trials.csv` | 사람이 시리얼 CSV·관찰로 작성 | `/target` 중단, 제어 통신 중단: 중단 시각, 정지 확인 시각, 정지 주체(control/bridge/board) |
+[report.md](../../../report.md)에 검증 결론·참고 이미지·미완료 회고를 통합했다. [verification_results.csv](verification_results.csv)는 실제 시험값을 발명하지 않고 이번 제출 자료의 증거 상태를 기록한다.
 
-- `run_id`는 bag 이름·시리얼 CSV(`opencr_node csv_path`)·이 CSV에 똑같이 쓴다. 예: `kpA_01`, `occlusion_01`, `success_01`.
-- 재등장 시각은 사람이 영상으로 판정한다. `analyze_tracking.py`의 "첫 재검출"은 검출 기준 보조값이다.
-- 복귀하지 못한 회차는 `recovery_sec`를 비우고 `success=0`으로 적는다 (0초로 쓰지 않음). 실패 회차도 지우지 않는다.
-- 2026-10-07 현재 두 템플릿은 비어 있다: 실제 장비 시험 전이다.
+## 파일 구분
+
+| 파일 | 의미 |
+|---|---|
+| verification_results.csv | 요구 시험·판정·증거·부족한 자료·검증 방해 원인 |
+| recovery_trials.csv | 기존 실측 양식. 원본에 회차가 없어 헤더만 유지 |
+| interruption_trials.csv | 기존 실측 양식. 원본에 회차가 없어 헤더만 유지 |
+| ../perception/ | 이전 노트북 인지 평가 원본 |
+| ../control/ | 이전 Pi DRY/PTY/USB 통신 원본 |
+| ../opencr/ | 이전 commissioning·펌웨어 단독 LIVE 원본 |
+| ../../verification_sources/ | 제출 회고·실행 스크립트·팀 PR 설명 요약 |
+
+회고에서 역산한 시각을 실측 양식에 넣지 않았다. 복구 실패를 0초로 쓰지 않는다. latest LIVE 원본이 없는 상태는 실패율 100% 또는 성공률 0%와 다르다.
+
+`tracking_logger.py`는 /target 수신 때만 행을 기록한다. /target 중단 후 정지 판단은 추적 CSV 하나로 입증할 수 없다. bridge를 강제 종료한 뒤 보드가 정지했는지도 종료된 bridge CSV만으로 확인할 수 없다. 영상·보드 상태·시각이 연결된 별도 근거가 필요하다.
+
+이번 문서 작성 과정에서 신규 하드웨어 시험을 수행하지 않았다. 원본 파일의 수치·판정 칸은 수정하지 않았다.
