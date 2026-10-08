@@ -1,8 +1,11 @@
 """인지 노드 (담당: 인지) — 컬러(+깊이) 영상에서 파란색 목표를 찾아 /target 발행
 
+실행 위치: Raspberry Pi (D435는 Pi USB 3에 연결. RealSense wrapper realsense2_camera가 발행하는 토픽을 직접 구독, 카메라 재발행 노드 없음)
 구독 (토픽 이름은 코드에 적지 않고 config/camera.yaml에서 읽음 — 파일 경로는 파라미터 camera_config)
-  color_topic           sensor_msgs/Image  (bgr8 또는 rgb8)
+  color_topic           sensor_msgs/Image  (bgr8 또는 rgb8) — 이 영상이 들어올 때마다 1번 처리·발행
   aligned_depth_topic   sensor_msgs/Image  (16UC1 또는 32FC1, 컬러에 정렬된 깊이) — use_depth: true일 때만
+                        가장 최근 깊이 영상을 보관했다가 시각 차 50 ms 이내인 컬러 영상에만 붙여 거리(dist_cm)를 잰다.
+                        깊이가 늦거나 없어도 컬러 처리·/target 발행은 멈추지 않는다.
   (camera_info_topic은 이 노드에서 쓰지 않음 — 확인·기록용)
 발행
   /target                   geometry_msgs/PointStamped  (발제문 지정 — 이름·형식 임의 변경 금지)
@@ -14,11 +17,11 @@
       header = 입력 컬러 영상의 시각·좌표계
   /perception/debug_image   sensor_msgs/Image (bgr8) — publish_debug_image: true일 때만 (확인용 화면)
 
-파라미터: config/tracker.yaml 의 perception_node 항목 (기본값은 detector.PARAM_DEFAULTS,
-          단 유효 추적 거리 depth_min/max_distance_cm은 기본값 없이 tracker.yaml에서만 받음)
-실행 예 (lv2_module5 폴더에서):
-  ros2 run realsense_tracker perception_node --ros-args \\
-    --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml -p camera_config:=$PWD/config/camera.yaml
+파라미터: config/tracker.yaml 의 perception_node 항목 (기본값은 detector.PARAM_DEFAULTS)
+  enforce_depth_range: false(기본) → 깊이는 기록용. true일 때만 거리 범위 밖을 미검출로 처리 (선택 기능)
+시각: header = 입력 컬러 영상의 header (wrapper가 채운 영상 시각 — 촬영 시각인지는 미확인). 새 시각을 만들어 붙이지 않는다.
+bag 재처리: -p use_sim_time:=true -r /target:=/target_replay 로 기존 /target과 섞이지 않게 실행 (README 문제 5)
+실행 예: README의 "Problem 1 실행" 참고 (tracker.launch.py가 camera_config 경로를 자동으로 넘김)
 """
 import time
 
@@ -26,8 +29,6 @@ import numpy as np
 import rclpy
 import yaml
 from geometry_msgs.msg import PointStamped
-from message_filters import ApproximateTimeSynchronizer, Subscriber
-from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
@@ -37,8 +38,8 @@ from .detector import PARAM_DEFAULTS, cfg_from_params, detect, draw
 
 # 인지 파라미터 외에 노드에서만 쓰는 파라미터
 NODE_PARAM_DEFAULTS = {
-    "camera_config": "",            # config/camera.yaml 경로 — 카메라 토픽 이름을 여기서 읽음 (launch에서 지정)
-    "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)로 유효 추적 거리 판정, 확인 화면·로그에 표시
+    "camera_config": "",            # 패키지 config/camera.yaml 경로 — 카메라 토픽 이름을 여기서 읽음 (launch가 자동 지정)
+    "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)를 확인 화면·로그에 표시 (gate는 enforce_depth_range)
     "depth_unit_m": 0.001,          # 16UC1 깊이 값 1이 몇 m인지 (RealSense 기본: 1mm)
     "publish_debug_image": False,   # true면 /perception/debug_image 발행 (rqt_image_view 등으로 확인)
     "stats_period_sec": 5.0,        # 이 간격(초)마다 처리 FPS·처리 시간을 로그로 남김 (0이면 끔)
@@ -50,8 +51,7 @@ NODE_PARAM_DEFAULTS = {
     #   best effort → 컬러 1.2 fps, 정렬 깊이 0 fps / reliable → 둘 다 29.4 fps  → reliable 사용
     "image_reliable": True,
 }
-# 유효 추적 거리 (cm) — 코드에 기본값을 두지 않고 tracker.yaml 값만 사용
-RANGE_PARAM_NAMES = ("depth_min_distance_cm", "depth_max_distance_cm")
+DEPTH_PAIR_SLOP_NS = 50_000_000   # 컬러·깊이 시각 차 50 ms 이내만 같은 장면으로 봄
 CAMERA_TOPIC_KEYS = ("color_topic", "aligned_depth_topic", "camera_info_topic")
 
 
@@ -103,20 +103,15 @@ class PerceptionNode(Node):
         super().__init__("perception_node")
         params = {name: self.declare_parameter(name, default).value
                   for name, default in {**PARAM_DEFAULTS, **NODE_PARAM_DEFAULTS}.items()}
-        for name in RANGE_PARAM_NAMES:  # 기본값 없이 선언 → tracker.yaml에 없으면 None (13 / 13.0 둘 다 허용)
-            params[name] = self.declare_parameter(name, None, ParameterDescriptor(dynamic_typing=True)).value
-        missing = [name for name in RANGE_PARAM_NAMES if params[name] is None]
-        if missing:
-            raise ConfigError(f"tracker.yaml(perception_node)에 {', '.join(missing)} 값이 없음 → "
-                              "유효 추적 거리(cm)를 tracker.yaml에 지정하세요")
         self.cfg = cfg_from_params(params)
         self.use_depth = bool(params["use_depth"])
         self.depth_unit_m = float(params["depth_unit_m"])
         self.last_found = None          # 검출 상태가 바뀔 때만 로그를 남기기 위함
         self.warned_size = False
+        self.latest_depth = None        # 가장 최근 깊이 영상 (컬러와 시각이 맞을 때만 사용)
         # 처리 FPS 측정 (발제문: 처리 완료 프레임 수 / 실제 경과 초 — 카메라 설정 FPS와 구분)
         self.stats_period = float(params["stats_period_sec"])
-        self.stats = {"t0": None, "n": 0, "found": 0, "proc_ms": []}
+        self.stats = {"t0": None, "n": 0, "found": 0, "depth_ok": 0, "proc_ms": []}
 
         # 카메라 토픽 이름: config/camera.yaml (가이드: 코드에 하드코딩하지 않음)
         cam_path = params["camera_config"]
@@ -143,13 +138,9 @@ class PerceptionNode(Node):
 
         # 영상 구독
         image_qos = qos(params["image_reliable"])
+        self.create_subscription(Image, topics["color_topic"], self.on_color, image_qos)
         if self.use_depth:
-            color = Subscriber(self, Image, topics["color_topic"], qos_profile=image_qos)
-            depth = Subscriber(self, Image, topics["aligned_depth_topic"], qos_profile=image_qos)
-            self.sync = ApproximateTimeSynchronizer([color, depth], queue_size=10, slop=0.05)  # 시각 차 50ms 이내끼리 묶음
-            self.sync.registerCallback(self.on_images)
-        else:
-            self.create_subscription(Image, topics["color_topic"], self.on_images, image_qos)
+            self.create_subscription(Image, topics["aligned_depth_topic"], self.on_depth, image_qos)
 
         name = lambda reliable: "reliable" if reliable else "best effort"
         r = self.cfg["hsv"]["ranges"][0]
@@ -158,14 +149,26 @@ class PerceptionNode(Node):
             f"인지 노드 시작: 컬러 {topics['color_topic']}"
             + (f", 깊이 {topics['aligned_depth_topic']}" if self.use_depth else "")
             + f", HSV {r['lower']}~{r['upper']}, min_area_ratio={self.cfg['min_area_ratio']}, "
-            + (f"유효 추적 거리 {d['min_distance_cm']:g}~{d['max_distance_cm']:g} cm, " if self.use_depth
-               else "유효 추적 거리 판정 안 함(use_depth: false), ")
+            + (f"거리 gate {d['min_distance_cm']:g}~{d['max_distance_cm']:g} cm 사용, "
+               if self.use_depth and d["enforce_range"] else "거리 gate 없음(Color 검출 기준), ")
             + f"/target 발행={name(params['target_reliable'])}·depth 1, "
             f"영상 구독={name(params['image_reliable'])}·depth 1, "
             f"확인 화면 발행={self.debug_pub is not None}")
 
-    def on_images(self, color_msg, depth_msg=None):
+    def on_depth(self, msg):
+        self.latest_depth = msg
+
+    def paired_depth(self, color_msg):
+        """컬러 영상과 시각 차 50 ms 이내인 최근 깊이 영상, 없으면 None"""
+        d = self.latest_depth
+        if d is None:
+            return None
+        stamp = lambda m: m.header.stamp.sec * 1_000_000_000 + m.header.stamp.nanosec
+        return d if abs(stamp(d) - stamp(color_msg)) <= DEPTH_PAIR_SLOP_NS else None
+
+    def on_color(self, color_msg):
         t_start = time.perf_counter()
+        depth_msg = self.paired_depth(color_msg) if self.use_depth else None
         try:
             frame = image_to_numpy(color_msg)
             depth, scale = None, self.depth_unit_m
@@ -175,7 +178,7 @@ class PerceptionNode(Node):
                     scale = 1.0                        # 32FC1은 이미 m 단위
                 if depth.shape != frame.shape[:2]:     # 컬러에 정렬되지 않은 깊이는 쓸 수 없음
                     if not self.warned_size:
-                        self.get_logger().warn(
+                        self.get_logger().warning(
                             f"깊이 {depth.shape}와 컬러 {frame.shape[:2]} 크기가 달라 거리 계산을 건너뜀 "
                             "(깊이를 컬러에 정렬해서 발행해야 함)")
                         self.warned_size = True
@@ -196,7 +199,7 @@ class PerceptionNode(Node):
         if self.debug_pub is not None:
             self.debug_pub.publish(numpy_to_image(draw(frame, res), color_msg.header))
 
-        self.update_stats(res["found"], (time.perf_counter() - t_start) * 1000)
+        self.update_stats(res["found"], res["dist_cm"] is not None, (time.perf_counter() - t_start) * 1000)
 
         if res["found"] != self.last_found:     # 검출 ↔ 미검출이 바뀔 때만 기록
             dist = "--" if res["dist_cm"] is None else f"{res['dist_cm']:.1f} cm"
@@ -207,7 +210,7 @@ class PerceptionNode(Node):
                 self.get_logger().info("목표 미검출 → x = y = z = 0 발행")
             self.last_found = res["found"]
 
-    def update_stats(self, found, proc_ms):
+    def update_stats(self, found, depth_ok, proc_ms):
         """처리 완료 프레임을 세고, stats_period_sec마다 처리 FPS와 처리 시간(영상 변환~발행)을 로그로 남김"""
         if self.stats_period <= 0:
             return
@@ -216,14 +219,16 @@ class PerceptionNode(Node):
             s["t0"] = now
         s["n"] += 1
         s["found"] += int(found)
+        s["depth_ok"] += int(depth_ok)
         s["proc_ms"].append(proc_ms)
         elapsed = now - s["t0"]
         if elapsed >= self.stats_period:
             self.get_logger().info(
                 f"처리 FPS {s['n'] / elapsed:.1f} (최근 {elapsed:.1f}초 동안 {s['n']}장 처리), "
                 f"처리 시간 평균 {sum(s['proc_ms']) / len(s['proc_ms']):.1f} ms·최대 {max(s['proc_ms']):.1f} ms, "
-                f"노드가 검출로 표시한 프레임 {s['found']}/{s['n']} (사람 대조 검출률과 다름)")
-            self.stats = {"t0": now, "n": 0, "found": 0, "proc_ms": []}
+                f"노드가 검출로 표시한 프레임 {s['found']}/{s['n']} (사람 대조 검출률과 다름)"
+                + (f", 유효 거리 측정 {s['depth_ok']}/{s['n']}" if self.use_depth else ""))
+            self.stats = {"t0": now, "n": 0, "found": 0, "depth_ok": 0, "proc_ms": []}
 
 
 def main(args=None):

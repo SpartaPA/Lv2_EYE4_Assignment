@@ -9,7 +9,7 @@
   python3 tools/image_capture.py --source ros   # RealSense ROS wrapper 토픽에서 받음 (실제 파이프라인과 같은 입력, ROS 환경)
   python tools/image_capture.py                 # RealSense를 직접 엶 (도구용 .venv, wrapper가 꺼져 있어야 함)
   ... --headless                                # 화면 없이: 터미널에 n/e/o/q 입력 후 Enter
-설정: ros2_ws/src/realsense_tracker/config/tracker.yaml (perception_node), config/camera.yaml
+설정: ros2_ws/src/realsense_tracker/config/tracker.yaml (perception_node), ros2_ws/src/realsense_tracker/config/camera.yaml
 """
 import argparse
 import csv

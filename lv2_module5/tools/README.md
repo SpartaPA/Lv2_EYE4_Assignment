@@ -7,12 +7,14 @@ RealSense 영상에서 파란색 목표(퍽)를 HSV 색상으로 찾아, 화면 
 | `ros2_ws/src/realsense_tracker/realsense_tracker/detector.py` | 검출 알고리즘 (ROS·카메라와 무관) — 노드와 도구가 함께 사용 |
 | `ros2_ws/src/realsense_tracker/realsense_tracker/perception_node.py` | ROS 2 인지 노드 — `/target` 발행 |
 | `ros2_ws/src/realsense_tracker/config/tracker.yaml` | 인지 파라미터 (`perception_node` 항목) |
-| `config/camera.yaml` | 카메라 해상도·fps·profile, **카메라 토픽 이름** (노드와 도구가 사용) |
+| `ros2_ws/src/realsense_tracker/config/camera.yaml` | 카메라 해상도·fps·profile, **카메라 토픽 이름** (launch·노드·도구가 사용) |
 | `tools/hsv_tuning.py` | HSV 범위 튜너 (트랙바) → `tracker.yaml`에 저장 |
 | `tools/image_capture.py` | 정상·미검출·가림 장면 검출 결과 저장 → `results/` |
 | `tools/common.py` | 도구 공통 (경로, 설정 읽기, RealSense 카메라) |
 | `tools/eval_frames.py` | 검출률·배경 오검출 평가 프레임 저장 (ROS) → `results/` + 판정 목록 CSV |
 | `tools/eval_score.py` | 사람이 판정한 CSV로 검출률·배경 오검출 집계 |
+| `tools/tracking_logger.py` | 문제 3·4·5: /target·상태·명령을 프레임별 CSV로 기록 (실시간·bag 재분석 공용, ROS) |
+| `tools/analyze_tracking.py` | 문제 3·4·5: 처리 FPS·RMSE·유효 추적 비율·소실/복귀 구간·그래프 (ROS 없음) |
 
 검출 순서: 영상 → 블러 → HSV 변환 → 색 마스크 → 잡음 제거 → 외곽선 → **가장 큰 덩어리 1개 선택** → 중심 계산
 
@@ -35,7 +37,7 @@ RealSense 영상에서 파란색 목표(퍽)를 HSV 색상으로 찾아, 화면 
 ## 2. 카메라 토픽 확인 (RealSense ROS 2 wrapper)
 
 카메라는 별도 노드 없이 RealSense ROS 2 wrapper(`realsense2_camera`)가 발행하는 토픽을 인지 노드가 직접 구독합니다.
-**실제 토픽 이름은 wrapper 버전·설정에 따라 다르므로 추측해서 적지 않고**, 아래처럼 확인한 값을 `config/camera.yaml`에 기록합니다.
+**실제 토픽 이름은 wrapper 버전·설정에 따라 다르므로 추측해서 적지 않고**, 아래처럼 확인한 값을 `config/camera.yaml`(패키지 `ros2_ws/src/realsense_tracker/config/`)에 기록합니다.
 (`color_topic`이 비어 있으면 인지 노드는 시작하지 않고 이 안내를 출력합니다.)
 
 ```bash
@@ -54,23 +56,22 @@ ros2 topic echo <컬러 토픽> --once --field header        # frame_id, stamp
 ros2 topic hz <컬러 토픽>                                # 실제 fps
 ```
 
-확인한 값을 `config/camera.yaml`의 `color_topic`, `aligned_depth_topic`, `camera_info_topic`에 기록합니다.
+확인한 값을 `config/camera.yaml`(패키지 `ros2_ws/src/realsense_tracker/config/`)의 `color_topic`, `aligned_depth_topic`, `camera_info_topic`에 기록합니다.
 가이드에 따라 encoding, frame_id, stamp, 실제 profile, D435 serial·firmware, wrapper 버전, USB 속도도 함께 기록해 두세요.
 
 ## 3. 인지 노드 실행 (`perception_node`)
 
 ```bash
-cd lv2_module5/ros2_ws
-colcon build --packages-select realsense_tracker
-source install/setup.bash
-cd ..                                            # lv2_module5 폴더로
-ros2 run realsense_tracker perception_node --ros-args \
-  --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml \
-  -p camera_config:=$PWD/config/camera.yaml
+# Raspberry Pi, 워크스페이스 빌드·source 후 (../README.md 8절)
+ros2 launch realsense_tracker tracker.launch.py          # wrapper + perception (camera_config 자동)
+# 또는 인지만 단독 실행 (아래 명령들의 $CFG도 이 값)
+CFG=$(ros2 pkg prefix realsense_tracker)/share/realsense_tracker/config
+ros2 run realsense_tracker perception_node --ros-args --params-file $CFG/tracker.yaml -p camera_config:=$CFG/camera.yaml
 ```
 
 - 구독: `camera.yaml`의 `color_topic` (bgr8 / rgb8), `use_depth: true`이면 `aligned_depth_topic` (컬러에 정렬된 16UC1 / 32FC1)
-- launch로 실행할 때는 `camera_config`에 `config/camera.yaml`의 절대 경로를 넘기면 됩니다. (통합 담당)
+  깊이는 별도로 받아 시각이 50 ms 이내인 컬러 영상에만 붙입니다. 깊이가 없어도 컬러 처리·`/target` 발행은 계속됩니다.
+- 깊이 거리 gate(13~100 cm)는 `enforce_depth_range: true`일 때만 동작합니다 (기본 false — 깊이는 기록용). launch는 camera_config 경로를 자동으로 넘깁니다.
 - 확인 화면: `-p publish_debug_image:=true`로 실행하면 `/perception/debug_image`에 검출 결과를 그린 영상이 나옵니다.
   (`ros2 run rqt_image_view rqt_image_view`로 확인)
 - 필요한 패키지: `rclpy`, `sensor_msgs`, `geometry_msgs`, `message_filters`, `python3-numpy`, `python3-opencv`, `python3-yaml`
@@ -98,15 +99,16 @@ ros2 run realsense_tracker perception_node --ros-args \
 
 | 이름 | 기본값 | 뜻 |
 |---|---|---|
-| `camera_config` | (빈 값) | `config/camera.yaml` 경로 — 카메라 토픽 이름을 여기서 읽음 (반드시 지정) |
+| `camera_config` | (빈 값) | `config/camera.yaml`(패키지 `ros2_ws/src/realsense_tracker/config/`) 경로 — 카메라 토픽 이름을 여기서 읽음 (반드시 지정) |
 | `hsv_lower`, `hsv_upper` | `[93, 120, 35]`, `[130, 255, 255]` | 목표 색 HSV 범위 (OpenCV: H 0~179) |
 | `min_area_ratio` | 0.002 | 화면 넓이 대비 최소 크기 |
 | `blur_ksize`, `morph_ksize` | 5, 5 | 블러·잡음 제거 크기 |
-| `use_depth` | false | 깊이도 구독해 거리(dist)를 확인 화면·로그에 표시 |
+| `use_depth` | false (tracker.yaml: true) | 깊이도 구독해 거리(dist)·유효 거리 측정 비율을 확인 화면·로그에 표시 |
+| `enforce_depth_range` | false | true일 때만 `depth_min/max_distance_cm` 밖·측정 불가를 미검출로 처리 (선택 기능) |
 | `depth_unit_m` | 0.001 | 16UC1 깊이 값 1의 길이(m) |
 | `depth_min_valid_ratio`, `depth_max_spread_cm` | 0.5, 5.0 | 이 기준을 못 넘으면 거리를 믿을 수 없다고 보고 비움 |
 | `publish_debug_image` | false | 확인 화면 발행 (평가 도구 `eval_frames.py`에 필요) |
-| `stats_period_sec` | 5.0 | 이 간격(초)마다 처리 FPS·처리 시간 로그 (0이면 끔) |
+| `stats_period_sec` | 5.0 (tracker.yaml: 1.0) | 이 간격(초)마다 처리 FPS·처리 시간 로그 (0이면 끔) |
 | `target_reliable` | false | `/target` 발행 QoS (false = best effort, 위 설명) |
 | `image_reliable` | true | 영상 구독 QoS (true = reliable, 위 설명) |
 
@@ -188,8 +190,8 @@ python tools/image_capture.py
 # 터미널 1: RealSense wrapper (2장 참고)
 # 터미널 2: 인지 노드 — 확인 화면 발행 필요
 ros2 run realsense_tracker perception_node --ros-args \
-  --params-file ros2_ws/src/realsense_tracker/config/tracker.yaml \
-  -p camera_config:=$PWD/config/camera.yaml -p publish_debug_image:=true
+  --params-file $CFG/tracker.yaml \
+  -p camera_config:=$CFG/camera.yaml -p publish_debug_image:=true
 # 터미널 3 (lv2_module5 폴더, ROS 환경): 평가 프레임 저장
 python3 tools/eval_frames.py --scene visible --note "거리 40cm, 실내 조명"   # SPACE 후 15초 동안 30장
 python3 tools/eval_frames.py --scene empty   --note "목표 치움"              # SPACE 후 10초 동안 10장

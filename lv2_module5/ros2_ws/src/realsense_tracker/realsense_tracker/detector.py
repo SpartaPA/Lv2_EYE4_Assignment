@@ -4,8 +4,10 @@ perception_node.py(ROS 2 노드)와 lv2_module5/tools/ 의 도구들이 함께 �
 
 파이프라인: 영상 → 블러 → HSV → 색상 마스크 → 잡음 제거 → 컨투어 → 대상 선택 → 중심 계산
 대상 선택 규칙: min_area_ratio 이상인 컨투어 중 면적이 가장 큰 것 1개
-깊이 영상(컬러에 정렬된 것)을 주면 목표까지의 실제 거리(dist_cm)도 계산하고,
-거리가 유효 추적 거리(tracker.yaml의 depth_min/max_distance_cm) 밖이거나 잴 수 없으면 미검출로 처리
+깊이 영상(컬러에 정렬된 것)을 주면 목표까지의 실제 거리(dist_cm)도 계산해 기록·확인에 쓴다.
+기본 추적은 Color 중심 오차만 사용한다. 깊이로 검출을 막는 거리 gate는 enforce_depth_range: true일 때만 켠다
+(기본 false → 깊이가 없거나 불안정해도 Color 검출 결과를 미검출로 바꾸지 않음).
+/target.point.z에는 깊이가 아니라 면적비(area_ratio)가 들어간다.
 """
 import cv2
 import numpy as np
@@ -19,6 +21,9 @@ PARAM_DEFAULTS = {
     "morph_ksize": 5,                # 잡음 제거(열기/닫기) 크기 (1이면 안 함)
     "depth_min_valid_ratio": 0.5,    # 목표 영역에서 깊이가 측정된 비율이 이보다 낮으면 거리를 비움
     "depth_max_spread_cm": 5.0,      # 목표 영역 깊이 값의 흩어짐(p25~p75)이 이보다 크면 거리를 비움
+    "enforce_depth_range": False,    # true일 때만 거리 범위 밖·측정 불가를 미검출로 처리 (선택 기능)
+    "depth_min_distance_cm": 13.0,   # enforce_depth_range: true일 때의 최소 거리 (cm)
+    "depth_max_distance_cm": 100.0,  # enforce_depth_range: true일 때의 최대 거리 (cm)
 }
 
 
@@ -32,7 +37,7 @@ def cfg_from_params(p):
         "morph_ksize": int(p["morph_ksize"]),
         "depth": {"min_valid_ratio": float(p["depth_min_valid_ratio"]),
                   "max_spread_cm": float(p["depth_max_spread_cm"]),
-                  # 유효 추적 거리 — 기본값 없이 tracker.yaml 값만 사용
+                  "enforce_range": bool(p["enforce_depth_range"]),
                   "min_distance_cm": float(p["depth_min_distance_cm"]),
                   "max_distance_cm": float(p["depth_max_distance_cm"])},
     }
@@ -89,8 +94,10 @@ def detect(frame, cfg, depth=None, depth_scale=0.001):
     dist_cm = 깊이 영상(depth, 컬러에 정렬됨)으로 잰 목표까지의 거리.
               depth가 없거나, 측정에 실패했거나, 믿을 수 없으면 None
     depth_scale = 깊이 값 1이 몇 m인지 (RealSense 16UC1은 0.001, 32FC1(m 단위)은 1.0)
-    유효 추적 거리: depth를 주면 min_distance_cm <= dist_cm <= max_distance_cm 일 때만 유효 목표.
+    거리 gate (선택): cfg["depth"]["enforce_range"]가 true이고 depth를 주면
+                    min_distance_cm <= dist_cm <= max_distance_cm 일 때만 유효 목표.
                     범위 밖이거나 거리를 잴 수 없으면 found=False, ex=ey=z=0 (dist_cm은 확인용으로 남김)
+                    enforce_range가 false(기본)이면 dist_cm은 기록용일 뿐 검출 여부에 영향을 주지 않는다.
     """
     H, W = frame.shape[:2]
     mask = make_mask(frame, cfg)
@@ -114,9 +121,9 @@ def detect(frame, cfg, depth=None, depth_scale=0.001):
         depth, mask, target, depth_scale,
         min_valid_ratio=dcfg.get("min_valid_ratio", 0.5),
         max_spread_cm=dcfg.get("max_spread_cm", 5.0))
-    if depth is not None:
-        # 유효 추적 거리 밖이거나 거리를 잴 수 없으면 유효 목표가 아님 → 미검출과 같이 ex=ey=z=0
-        result["dist_cm"] = dist  # 확인 화면에 거리를 보여 주기 위함 (/target에는 들어가지 않음)
+    result["dist_cm"] = dist  # 확인 화면·로그용 (/target에는 들어가지 않음)
+    if depth is not None and dcfg.get("enforce_range", False):
+        # 선택 기능: 거리 범위 밖이거나 거리를 잴 수 없으면 미검출과 같이 ex=ey=z=0
         if dist is None or not dcfg["min_distance_cm"] <= dist <= dcfg["max_distance_cm"]:
             return result
 

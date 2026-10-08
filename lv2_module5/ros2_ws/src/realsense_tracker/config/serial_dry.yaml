@@ -1,0 +1,12 @@
+# opencr_node 시리얼 DRY 시험 전용 — MODE=DRY 펌웨어(ENABLE_MOTOR_OUTPUT=0)만 허용.
+# 펌웨어는 모터 버스를 호출하지 않고 피드백은 모의 값이다. 실제 모터 구동 설정은 opencr_live.yaml.
+opencr_node:
+  ros__parameters:
+    dry_run: true
+    serial_mode: true
+    expected_board_mode: DRY
+    enable_live_hardware: false
+    port: ""  # 필수: -p port:=/dev/serial/by-id/... 또는 PTY 경로
+    usb_serial_baudrate: 115200
+    command_max_age_sec: 0.15
+    csv_path: ""

@@ -43,6 +43,8 @@ def main():
     ap.add_argument("--duration", type=float, help="이 시간(초) 동안 고르게 나눠 저장 (기본 visible 15, empty 10)")
     ap.add_argument("--note", default="", help="시험 조건 메모 (거리, 조명, 배경 등)")
     ap.add_argument("--no-view", action="store_true", help="확인 창 없이 바로 저장 시작")
+    ap.add_argument("--target-topic", default="/target",
+                    help="검출 결과 토픽 (bag 입력 재처리 이미지를 저장할 때는 /target_replay)")
     args = ap.parse_args()
     view = not args.no_view
     n_frames = args.frames or DEFAULTS[args.scene][0]
@@ -61,9 +63,9 @@ def main():
     # 같은 영상(같은 시각)의 원본·검출 그림·/target을 하나로 묶음
     sync = TimeSynchronizer([Subscriber(node, Image, cam["color_topic"], qos_profile=reliable),
                              Subscriber(node, Image, "/perception/debug_image", qos_profile=reliable),
-                             Subscriber(node, PointStamped, "/target", qos_profile=best_effort)], queue_size=30)
+                             Subscriber(node, PointStamped, args.target_topic, qos_profile=best_effort)], queue_size=30)
     count = {"target": 0}  # 저장 구간 동안 받은 /target 수 → 처리 FPS 확인용
-    node.create_subscription(PointStamped, "/target", lambda m: count.__setitem__("target", count["target"] + 1),
+    node.create_subscription(PointStamped, args.target_topic, lambda m: count.__setitem__("target", count["target"] + 1),
                              best_effort)
 
     rows = []

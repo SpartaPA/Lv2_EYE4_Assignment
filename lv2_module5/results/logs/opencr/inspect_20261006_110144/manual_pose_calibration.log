@@ -1,0 +1,179 @@
+--- Miniterm on /dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00  115200,8,N,1 ---
+--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H ---
+INSPECT START
+MOTOR AXIS=PAN ID=11
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=3078
+Present_Velocity=0
+Present_Input_Voltage=120
+Present_Temperature=33
+Hardware_Error_Status=0
+READS_COMPLETE
+MOTOR AXIS=TILT ID=12
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=4096
+Present_Velocity=0
+Present_Input_Voltage=121
+Present_Temperature=34
+Hardware_Error_Status=0
+READS_COMPLETE
+INSPECT COMPLETE
+No motor control registers were written.
+INSPECT START
+MOTOR AXIS=PAN ID=11
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=3482
+Present_Velocity=0
+Present_Input_Voltage=120
+Present_Temperature=33
+Hardware_Error_Status=0
+READS_COMPLETE
+MOTOR AXIS=TILT ID=12
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=4095
+Present_Velocity=0
+Present_Input_Voltage=121
+Present_Temperature=34
+Hardware_Error_Status=0
+READS_COMPLETE
+INSPECT COMPLETE
+No motor control registers were written.
+INSPECT START
+MOTOR AXIS=PAN ID=11
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=2582
+Present_Velocity=0
+Present_Input_Voltage=120
+Present_Temperature=32
+Hardware_Error_Status=0
+READS_COMPLETE
+MOTOR AXIS=TILT ID=12
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=4095
+Present_Velocity=0
+Present_Input_Voltage=121
+Present_Temperature=34
+Hardware_Error_Status=0
+READS_COMPLETE
+INSPECT COMPLETE
+No motor control registers were written.
+INSPECT START
+MOTOR AXIS=PAN ID=11
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=3056
+Present_Velocity=0
+Present_Input_Voltage=120
+Present_Temperature=33
+Hardware_Error_Status=0
+READS_COMPLETE
+MOTOR AXIS=TILT ID=12
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=3724
+Present_Velocity=0
+Present_Input_Voltage=121
+Present_Temperature=34
+Hardware_Error_Status=0
+READS_COMPLETE
+INSPECT COMPLETE
+No motor control registers were written.
+INSPECT START
+MOTOR AXIS=PAN ID=11
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=3057
+Present_Velocity=0
+Present_Input_Voltage=120
+Present_Temperature=33
+Hardware_Error_Status=0
+READS_COMPLETE
+MOTOR AXIS=TILT ID=12
+MODEL_NUMBER=1020
+PROTOCOL=2.0
+Operating_Mode=1
+Drive_Mode=0
+Torque_Enable=0
+Homing_Offset=0
+Min_Position_Limit=0
+Max_Position_Limit=4095
+Velocity_Limit=200
+Present_Position=4338
+Present_Velocity=0
+Present_Input_Voltage=121
+Present_Temperature=34
+Hardware_Error_Status=0
+READS_COMPLETE
+INSPECT COMPLETE
+No motor control registers were written.
+
+--- exit ---

@@ -15,7 +15,7 @@ import yaml
 LV2 = Path(__file__).resolve().parents[1]                  # lv2_module5/
 PKG = LV2 / "ros2_ws" / "src" / "realsense_tracker"        # ROS 2 패키지 폴더
 PARAMS_PATH = PKG / "config" / "tracker.yaml"              # 인지 파라미터 (perception_node 항목)
-CAMERA_PATH = LV2 / "config" / "camera.yaml"               # 카메라 해상도·fps
+CAMERA_PATH = PKG / "config" / "camera.yaml"               # 카메라 해상도·fps·토픽 (Source of Truth)
 RESULTS = LV2 / "results"
 
 sys.path.insert(0, str(PKG))  # ROS 빌드 없이 detector.py를 바로 불러오기 위함

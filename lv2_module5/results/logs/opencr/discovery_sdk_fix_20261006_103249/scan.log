@@ -1,0 +1,13 @@
+--- Miniterm on /dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00  115200,8,N,1 ---
+--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H ---
+SCAN START
+Only one motor should be connected.
+SCANNING BAUD 57600
+NO RESPONSE
+SCANNING BAUD 1000000
+FOUND ID=11 BAUD=1000000 PROTOCOL=2.0 MODEL_NUMBER=1020 MODEL=XM430-W350
+FOUND ID=12 BAUD=1000000 PROTOCOL=2.0 MODEL_NUMBER=1020 MODEL=XM430-W350
+SCAN COMPLETE
+No motor control registers were written.
+
+--- exit ---

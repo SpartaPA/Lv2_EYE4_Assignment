@@ -1,281 +1,97 @@
-# 제어 인터페이스
+# Pan/Tilt 제어 인터페이스 (최종)
 
-## 1. 범위 및 구현 상태
+담당: 제어(조민혁) + 통합(한상준). 코드와 이 문서가 다르면 코드를 기준으로 이 문서를 고친다.
+실행 위치: 모든 노드는 Raspberry Pi 한 대 (README 2절). 구현 상태와 장비 검증 상태는 [requirements_traceability.md](requirements_traceability.md)에 따로 표시한다.
 
-이 문서는 수평 단일 축 표적 추적을 위한 제안 인터페이스를 정의한다.
+## 1. 계층별 책임
 
-담당자: 조민혁(MinHyeok Cho) — Control
+| 계층 | 파일 | 책임 | 하지 않는 일 |
+|---|---|---|---|
+| perception_node | `detector.py`, `perception_node.py` | ex/ey/area_ratio, 미검출 z=0, 원본 영상 시각 | 거리로 검출 제한(선택 옵션 제외), 제어 |
+| control_node | `control_core.py`, `control_node.py` | 입력 신선도, timeout 0.5 s, IDLE/TRACKING/LOST, P 제어, **direction(유일)**, 축별 속도 상한·deadband, 3프레임 복귀 | 시리얼, 위치 적분, 각도 제한 |
+| opencr_node | `serial_core.py`, `opencr_node.py` | 명령 나이 0.15 s, 0.05 rad/s 검사, DRY/LIVE 모드 확인, 명시적 prepare/arm/disarm, FAULT 래치 | 부호 변환, 자동 ARM, 자동 재연결 |
+| 펌웨어 | `tracking_controller_2axis.ino` | rad/s→원시 단위, 0.05 rad/s 상한, **엔코더 경계**, 명령 timeout 300 ms, Bus_Watchdog 200 ms, 고장 FAULT | 부호 변환, 자동 복구 |
 
-검증 완료:
-- 데스크톱의 ROS 2 Lyrical 패키지 `tracking_control` 빌드 성공.
-- Raspberry Pi에서 OpenCR 펌웨어 컴파일 및 업로드 성공.
-- Raspberry Pi에서 OpenCR USB 시리얼 출력 수신 성공.
+각도 제한은 실제 엔코더 위치를 아는 펌웨어만 담당한다. control_node는 명령을 적분해 가짜 위치를 만들지 않는다.
 
-미검증:
-- 명령 파서 및 명령 수신 워치독.
-- DYNAMIXEL 식별, 동작 모드 및 회전 방향.
-- 실제 모터 정지, 속도 제한 및 각도 제한.
-- ROS 제어 노드 및 전체 추적 시스템.
+## 2. `/target` (perception → control)
 
-아래 설정은 초기 설계값이며 실험으로 측정한 결과가 아니다.
-ROS 인터페이스는 Vision 및 Integration 담당자와 확인해야 한다.
-
-## 2. 구성 요소별 책임
-
-| 구성 요소 | 책임 |
-|---|---|
-| Vision 노드 | 표적을 검출하고 정규화된 영상 오차를 발행한다. |
-| Control 노드 | 표적 정보의 최신성을 확인하고 추적 상태를 관리하며 제한된 속도 명령을 계산한다. |
-| 시리얼 전송 모듈 | 명령을 전송하고 OpenCR 응답을 수신한다. |
-| OpenCR | 명령을 해석하고 보드 측 제한을 적용하며 명령 수신 타임아웃 시 정지한다. |
-| DYNAMIXEL | 모터 명령을 실행하고 위치 피드백을 제공한다. |
-
-## 3. ROS 입력: /target
-
-메시지 타입: `geometry_msgs/msg/PointStamped`
+`geometry_msgs/msg/PointStamped`, QoS best effort · keep last 1 · volatile (구독도 best effort).
 
 | 필드 | 의미 |
 |---|---|
-| `header.stamp` | 가능한 경우 원본 영상의 획득 시각 |
-| `point.x` | 정규화된 수평 오차 `ex` |
-| `point.y` | 정규화된 수직 오차 `ey` |
-| `point.z` | 윤곽선 면적을 전체 영상 면적으로 나눈 비율 |
-| `point.z = 0` | 표적 미검출 |
+| header.stamp / frame_id | 입력 Color 영상의 header 그대로 (wrapper가 채운 영상 시각 — 촬영 시각인지는 미확인, Pi에서 확인 TODO; frame_id `camera_color_optical_frame`) |
+| point.x | ex = (cx − W/2)/(W/2), 오른쪽 + |
+| point.y | ey = (cy − H/2)/(H/2), 아래쪽 + |
+| point.z | area_ratio = contour_area/(W·H), 검출 시 (0, 1], **미검출 = 0** |
 
-정의:
+PointStamped는 3D 위치가 아니라 이 과제의 목표 전달 규약이다. z에 Depth를 넣지 않는다. 영상마다 1번 발행하며 미검출도 z=0으로 발행한다.
 
-```text
-ex = (cx - W/2) / (W/2)
-ey = (cy - H/2) / (H/2)
-area_ratio = contour_area / (W * H)
-```
+## 3. 입력 판정과 상태 (control_core)
 
-`ex`가 양수이면 표적이 영상 중심의 오른쪽에 있다.
-`ey`가 양수이면 표적이 영상 중심의 아래쪽에 있다.
-
-이 필드들은 영상 측정값이며 실제 공간의 XYZ 좌표가 아니다.
-`header.frame_id`는 영상의 기준 프레임을 식별하며 영상 프레임 순번이 아니다.
-
-초기 구독 QoS:
-- 신뢰성: best effort
-- 이력 정책: keep last
-- 큐 깊이: 1
-- 내구성: volatile
-
-Vision 노드는 처리한 영상마다 메시지를 한 번 발행한다.
-표적이 없는 영상에도 `point.z = 0`인 메시지를 발행한다.
-
-유효한 표적 검출 입력 조건:
-- x, y, z가 모두 유한한 수이다.
-- x와 y가 [-1, 1] 범위에 있다.
-- z가 (0, 1] 범위에 있다.
-
-잘못된 입력을 받으면 속도 명령을 0으로 설정해야 하며,
-해당 입력은 복귀 조건의 연속 프레임 수에 포함하지 않는다.
-
-## 4. 주기 및 데이터 최신성
-
-| 설정 | 초기값 |
-|---|---|
-| 제어 타이머 주파수 | 20 Hz |
-| 표적 메시지 수신 타임아웃 | 0.5초 |
-| OpenCR 명령 수신 타임아웃 | 0.3초 |
-| 추적 복귀 조건 | 연속된 최신 검출 프레임 3개 |
-
-제어 노드는 단조 시계(monotonic clock)로 마지막 표적 메시지
-수신 이후 경과 시간을 측정한다.
-OpenCR은 `millis()`의 경과 시간으로 명령 수신 워치독을 구현한다.
-
-수신 타임아웃만으로는 지연되거나 재생된 영상을 검출할 수 없다.
-실시간 동작에서는 원본 타임스탬프를 확인하여 오래된 프레임,
-중복 프레임 및 순서가 뒤바뀐 프레임도 판별해야 한다.
-서로 다른 컴퓨터의 원본 타임스탬프를 비교하는 경우
-컴퓨터 간 시각 동기화가 필요하다.
-
-복귀 조건은 제어 타이머 실행 횟수가 아니라
-새로운 영상 메시지 수를 기준으로 계산한다.
-표적 미검출, 잘못된 입력 또는 오래된 프레임이 발생하면
-복귀 카운터를 초기화한다.
-
-ROS bag 재생 시에는 실제 모터 출력을 비활성화한
-dry-run 모드를 사용한다.
-
-## 5. 제어 계산
-
-제안 출력값은 rad/s 단위의 목표 각속도이다.
-
-```text
-velocity = direction * kp * ex
-velocity = clamp(velocity, -speed_limit, +speed_limit)
-```
-
-추가 규칙:
-- 영상 중심 데드밴드 안에서는 속도를 0으로 명령한다.
-- 유효하고 최신인 표적 정보가 없으면 속도를 0으로 명령한다.
-- 각도 경계에서 허용 범위 밖으로 더 이동하는 방향의 명령을 보내지 않는다.
-- 모터 위치 피드백이 없거나 유효하지 않으면 정지하고 구동 허가를 해제한다.
-- OpenCR에서도 독립적으로 모터 제한을 적용한다.
-
-`direction`은 +1 또는 -1이며,
-제한된 실제 움직임으로 부호를 검증해야 한다.
-
-모터를 활성화한 시험 전에 다음 항목을 결정해야 한다.
-- 모터 모델, ID, 통신 속도 및 프로토콜.
-- 동작 모드.
-- 모터의 양의 회전 방향.
-- 위치 기준 및 허용 각도 범위.
-- 실제 운용 속도 제한.
-- 데드밴드 및 초기 Kp.
-
-파서 단독 시험에서는 ±0.10 rad/s 이내의 속도값을 허용한다.
-이는 소프트웨어 시험용 제한값이며
-실제 모터 운용에 승인된 제한값이 아니다.
-
-## 6. 추적 상태와 구동 허가
-
-추적 상태와 모터 구동 허가(arming)는 별도로 관리한다.
-
-| 상태 | 동작 |
-|---|---|
-| IDLE | 시작 상태. 유효한 입력을 기다리며 속도는 0이다. |
-| TRACKING | 유효하고 최신인 표적 입력으로 제한된 속도를 계산한다. |
-| LOST | 표적 소실, 잘못된 입력 또는 입력 타임아웃 이후 속도를 0으로 설정한다. |
-
-연속된 최신 검출 프레임 3개를 받으면 TRACKING으로 진입한다.
-실제 움직임에는 명시적인 구동 허가도 필요하다.
-
-일반적인 표적 소실:
-- LOST로 전환한다.
-- 구동 허가 상태에서는 제어 주기에 맞춰 속도 0 명령을 계속 전송한다.
-- 복귀 조건을 만족하면 추적을 재개한다.
-
-OpenCR 통신 타임아웃:
-- 요청 속도를 0으로 초기화한다.
-- 구동 허가를 해제한다.
-- 이후 속도 명령을 받으려면 명시적인 ARM 명령이 필요하다.
-- 호스트는 이 오류 이후 자동으로 구동 허가를 다시 부여해서는 안 된다.
-
-개발 기본값: `dry_run=true`.
-
-Dry-run 모드에서는 시리얼 포트를 열거나
-하드웨어 명령을 전송하지 않는다.
-
-## 7. USB 시리얼 연결
-
-연결: Raspberry Pi와 OpenCR을 USB로 연결한다.
-
-시리얼 설정:
-- 통신 속도: 115200 baud
-- 데이터 비트: 8
-- 패리티: 없음
-- 정지 비트: 1
-
-현재 장치 경로:
-
-```text
-/dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00
-```
-
-동시에 하나의 애플리케이션만 시리얼 포트를 사용해야 한다.
-
-명령은 대소문자를 구분하는 ASCII 문자열이며 LF로 끝난다.
-CRLF도 허용한다.
-
-최대 명령 길이는 줄 종료 문자를 제외한 63자이다.
-길이가 초과되거나 유효하지 않은 줄은 다음 줄바꿈까지 폐기한다.
-
-## 8. 시리얼 명령
-
-| 명령 | 동작 | 워치독에 미치는 영향 |
+| 입력 | 판정 | 결과 |
 |---|---|---|
-| ARM | 요청 속도 0으로 구동을 허가한다. | 타이머 시작 또는 초기화 |
-| VEL <value> | 구동 허가 상태에서 요청 각속도(rad/s)를 설정한다. | 수락한 경우에만 타이머 초기화 |
-| STOP | 요청 속도를 0으로 설정하고 구동 허가 상태는 유지한다. | 구동 허가 상태이면 타이머 초기화 |
-| DISARM | 속도를 0으로 설정하고 구동 허가를 해제한다. | 워치독 비활성화 |
-| STATUS | 현재 상태를 보고한다. | 타이머를 갱신하지 않음 |
+| x,y,z 유한, \|x\|,\|y\|≤1, 0≤z≤1, stamp>0, 0 ≤ (now−stamp) ≤ 0.5 s, stamp가 직전보다 큼 | 신선·유효 | z>0이면 복귀 카운트 +1 / z=0이면 LOST |
+| 위 조건 중 하나라도 실패 (NaN, 범위 밖, 오래됨, 미래, 중복·역순) | 무효 | LOST, 카운트 0 |
+| 마지막 신선 입력 후 0.5 s (수신 단조 시각 또는 영상 시각 기준) | timeout | LOST |
+| `/control/enable` false | 명시적 중지 | IDLE, 입력 무시, 정지 |
 
-예시:
+| 상태 | 명령 |
+|---|---|
+| IDLE (시작, 명시적 중지) | stop=true, 0, 0 |
+| LOST (미검출, 무효, timeout) | stop=true, 0, 0 — 미검출 첫 프레임부터. LOST 전환 시 타이머를 기다리지 않고 즉시 발행 |
+| TRACKING (신선 검출 3프레임 연속 후) | pan = clamp(pan_dir·kp_pan·ex, ±pan_limit), tilt = clamp(tilt_dir·kp_tilt·ey, ±tilt_limit), \|e\| ≤ deadband이면 그 축 0 |
 
-```text
-ARM
-VEL 0.02
-VEL -0.02
-STOP
-DISARM
-STATUS
-```
+복귀 카운트는 타이머가 아니라 새 영상 메시지 기준이다. timeout 판정을 복귀보다 먼저 하므로 발행이 끊겼다 재개된 첫 프레임으로 옛 TRACKING을 잇지 않는다.
 
-거부된 명령은 워치독 타이머를 갱신해서는 안 된다.
-VEL은 형식 오류, 비유한 값 및 범위 초과 값을 거부해야 한다.
-구동 허가가 해제된 상태에서 수신한 VEL은 거부해야 한다.
+## 4. `/control/pan_tilt_cmd` (control → opencr)
 
-호스트는 명시적인 구동 허가 동작에 대해 ARM을 한 번 전송한다.
-이후 정지 시의 VEL 0을 포함하여 VEL 명령을 20 Hz로 전송한다.
-연결 유지 신호(heartbeat) 용도로 ARM을 반복 전송해서는 안 된다.
+`realsense_tracker_interfaces/msg/PanTiltCommand` — `std_msgs/Header header`, `bool stop`, `float32 pan_velocity_rad_s`, `float32 tilt_velocity_rad_s`.
+20 Hz 발행(QoS depth 1). 단위 rad/s, **모터 원시 부호**(direction 적용 후). stop=true면 두 축 0. `/tracking_status`(std_msgs/String)를 같은 주기로 발행.
 
-## 9. 파서 시험 응답
+direction 근거 (`docs/hardware.md`): Pan 원시 + = 좌측, Tilt 원시 + = 아래쪽 → 목표가 오른쪽(ex>0)이면 Pan −, 아래쪽(ey>0)이면 Tilt + → `pan_direction=-1`, `tilt_direction=+1`.
 
-명령 수락 응답:
+## 5. OpenCR bridge (opencr_node)
 
-```text
-ACK ARM
-ACK VEL
-ACK STOP
-ACK DISARM
-```
+| 모드 | serial_mode | dry_run | expected_board_mode | enable_live_hardware | 설정 |
+|---|---|---|---|---|---|
+| DRY sink (포트 안 엶) | false | true | – | – | `control_dry.yaml` |
+| 시리얼 DRY | true | true | DRY | false | `serial_dry.yaml` |
+| 시리얼 LIVE | true | false | LIVE | true | `opencr_live.yaml` |
 
-오류 응답:
+다른 조합은 시작 거부(`serial_core.check_mode`). 보드 STATUS의 MODE가 기대와 다르면 즉시 FAULT(명령 전송 없음).
 
-```text
-ERR VALUE
-ERR RANGE
-ERR DISARMED
-ERR COMMAND
-ERR LINE
-```
+세션: 연결 → STATUS(BOOT 확인, 기존 세션 인수 금지) → `/opencr/prepare`(CHECK→HOLD, 토크 ON 영속도) → READY → `/opencr/arm`(신선한 stop=false 명령이 있을 때만) → ARMED.
+ARMED에서 신선한 명령마다 VEL 또는 STOP 1회 전송. stop=true(정상 목표 소실)는 STOP — ARM 유지, 다시 TRACKING이면 VEL 재개.
+정지 중에는 VEL을 보내지 않고 20 ms STATUS로 `ARMED GOAL=0,0 VEL=0,0`을 확인한 뒤에만 재개한다 (이전 STOPPED 이벤트로 새 STOP을 해제하지 않음 — STOP 복귀 경쟁 조건 수정, `results/logs/control/serial_bridge_stop_fix_20261006_182228/`).
 
-상태 및 이벤트:
+FAULT(래치, 자동 재ARM·재연결 없음): ROS 명령 0.15 s 중단·오래된/역순/범위 밖 명령(ARM 중), ACK 0.2 s 미수신, STATUS 0.4 s 미수신, 보드 피드백 나이 >100 ms, 보드 재부팅,
+EVENT TIMEOUT/LIMIT, FAULT/ERR, 깨진 응답, 시리얼 오류. FAULT 시 MODE가 확인된 보드에 DISARM 1회(best effort). 노드 종료 시 DISARM.
+`/opencr/bridge_status`: phase, 최초 FAULT 원인, 보드 STATE 캐시, 수신 나이 (DRY의 위치·속도·토크는 모의 값).
 
-```text
-READY DISARMED
-STATE DISARMED ZERO
-STATE ARMED ZERO
-STATE ARMED NONZERO
-EVENT TIMEOUT DISARMED
-```
+## 6. 시리얼 프로토콜 (USB 115200 8N1, LF, 최대 63자)
 
-파서 단독 펌웨어에서 수락 응답은
-소프트웨어가 명령을 수락했다는 뜻이다.
-실제 모터의 움직임이나 정지를 증명하지 않는다.
+| 명령 | 동작 | 응답 |
+|---|---|---|
+| STATUS | 캐시된 상태 (버스·타이머 영향 없음) | `STATE <s> MODE=<DRY\|LIVE> ARMED= GOAL=p,t POS=p,t VEL=p,t TORQUE=p,t AGE_MS= T_MS=` |
+| CHECK | 모델 1020·Protocol 2.0·Operating Mode 1·토크 OFF·중립 자세 확인 | `CHECK_OK BOTH_TORQUES_OFF` |
+| HOLD | 영속도·watchdog 설정 후 토크 ON | `ACK HOLD ZERO_REQUESTED` → `EVENT STOPPED TORQUE_RETAINED` |
+| ARM | HOLD 완료·정지 상태에서 구동 허가, 300 ms 타이머 시작 | `ACK ARM` |
+| VEL p t | 두 값 모두 검사 후 순차 쓰기, \|값\| ≤ 0.05 rad/s | `ACK VEL` / `ERR RANGE` / `ERR DISARMED` / `ERR STOPPING` |
+| STOP | 두 축 0, ARM 유지 | `ACK STOP ZERO_REQUESTED` |
+| DISARM | 두 축 0, ARM 해제, 토크 유지 | `ACK DISARM ZERO_REQUESTED` |
+| SUPPORTED_OFF | 카메라 지지 확인 후 토크 OFF, reset 필요 | `ACK SUPPORTED_OFF TORQUE_OFF_CONFIRMED RESET_REQUIRED` |
 
-진단 출력 때문에 워치독 실행이 차단되지 않도록,
-송신 버퍼가 가득 차면 진단 메시지를 버릴 수 있다.
+수락한 VEL·ARM 중 STOP만 명령 타이머를 갱신한다. STATUS·오류·거부 명령은 갱신하지 않는다.
 
-모터 활성화 버전의 상태·측정값 보고 형식과
-ROS 명령/상태 토픽의 메시지 구조는 통합 전에 합의해야 한다.
-요청 명령과 실제 모터 피드백을 구분하고 오류를 보고해야 한다.
+## 7. Timeout·정지 계층
 
-## 10. 완료 판정 항목
+| 계층 | 감시 대상 | 값 | 동작 |
+|---|---|---|---|
+| control_node | 신선한 `/target` | 0.5 s (`target_timeout_sec`) | LOST, stop=true |
+| opencr_node | 신선한 PanTiltCommand | 0.15 s (`command_max_age_sec`) | FAULT, DISARM 시도 |
+| 펌웨어 | 마지막 수락 명령 | 300 ms (`COMMAND_MS`) | 두 축 0 + DISARM, 토크 유지 |
+| 모터 | 버스 instruction packet | 200 ms (`Bus_Watchdog` 10 × 20 ms) | 모터 자체 정지 (보드 멈춤 대비) |
 
-파서 단독 시험:
-- 시작 시 구동 허가가 해제되어 있고 요청 속도가 0이다.
-- 구동 허가 해제 상태에서 VEL을 거부한다.
-- 구동 허가 상태에서 유효한 양수 및 음수 속도를 수락한다.
-- 형식 오류, 비유한 값 및 범위 초과 값을 거부한다.
-- STOP이 요청 속도를 0으로 설정한다.
-- DISARM이 요청 속도를 0으로 설정하고 구동 허가를 해제한다.
-- 명령 수신이 중단되면 타임아웃이 발생하고 구동 허가가 해제된다.
-- 잘못된 명령과 STATUS는 타임아웃 발생을 막지 않는다.
-- 타임아웃 이후 VEL만으로는 구동 허가가 다시 부여되지 않는다.
-- 불완전하거나 너무 긴 입력이 워치독 실행을 차단하지 않는다.
-
-모터 활성화 시험:
-- 실제 회전 방향 및 위치 피드백을 검증한다.
-- 속도 제한 및 각도 제한을 검증한다.
-- 표적 소실 시 실제 정지를 검증한다.
-- 표적 메시지 발행이 중단되었을 때 실제 정지를 검증한다.
-- 호스트 제어 프로그램이 중단되었을 때 독립적인 실제 정지를 검증한다.
-
-소프트웨어 타임아웃 시험만으로
-실제 모터 정지 성능이 입증되지는 않는다.
-측정한 실제 정지 동작은 별도로 기록한다.
+opencr_node는 마지막 비영 속도를 반복 전송해 보드 타이머를 갱신하지 않는다 (명령 1건 = 전송 1회). 300 ms는 timeout 설정값이지 실제 정지 시간이 아니다.
+정상 정지는 영속도 + 토크 유지다. Tilt는 토크가 꺼지면 내려가므로 전원 상실·하드웨어 고장 시 자세 유지는 소프트웨어로 보장할 수 없다.
