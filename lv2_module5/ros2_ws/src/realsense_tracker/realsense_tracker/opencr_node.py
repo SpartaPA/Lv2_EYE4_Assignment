@@ -23,6 +23,7 @@ LIVE에서도 자동 동작은 없다
 시리얼 로그 CSV(csv_path)는 bag과 같은 run_id를 파일명에 넣어 연결한다.
 """
 import json
+import time
 
 import rclpy
 from rclpy.node import Node
@@ -39,6 +40,8 @@ USB_BAUDRATE = 115200  # 기본값. 펌웨어 Serial.begin(115200)과 같아야 
 
 
 class SerialNode(Node):
+    STATUS_PUBLISH_PERIOD_SEC = 0.1
+
     def __init__(self):
         super().__init__('opencr_node')
         self.declare_parameter('dry_run', True)
@@ -61,6 +64,8 @@ class SerialNode(Node):
         self.csv_log = None
         self.link = None
         self.transport = None
+        self._last_status_signature = None
+        self._last_status_publish = float('-inf')
         try:
             if get('csv_path'):
                 self.csv_log = AsyncCsv(get('csv_path'))
@@ -96,23 +101,38 @@ class SerialNode(Node):
 
     def prepare(self, request, response):
         response.success, response.message = self.link.prepare()
+        self._publish_status(force=True)
         return response
 
     def arm(self, request, response):
         response.success, response.message = self.link.arm()
+        self._publish_status(force=True)
         return response
 
     def disarm(self, request, response):
         response.success, response.message = self.link.disarm()
+        self._publish_status(force=True)
         return response
+
+    def _publish_status(self, force=False):
+        now = time.monotonic()
+        signature = (self.link.phase, self.link.reason)
+        changed = signature != self._last_status_signature
+        if (not force and not changed
+                and now - self._last_status_publish < self.STATUS_PUBLISH_PERIOD_SEC):
+            return
+
+        state = self.link.snapshot()
+        state['logging'] = self.csv_log.snapshot() if self.csv_log else {'enabled': False}
+        msg = String()
+        msg.data = json.dumps(state)
+        self.status.publish(msg)
+        self._last_status_signature = signature
+        self._last_status_publish = now
 
     def tick(self):
         self.link.tick()
-        msg = String()
-        state = self.link.snapshot()
-        state['logging'] = self.csv_log.snapshot() if self.csv_log else {'enabled': False}
-        msg.data = json.dumps(state)
-        self.status.publish(msg)
+        self._publish_status()
 
     def destroy_node(self):
         if self.link:
