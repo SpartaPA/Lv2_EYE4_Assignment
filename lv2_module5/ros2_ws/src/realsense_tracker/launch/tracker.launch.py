@@ -19,7 +19,7 @@
 """
 import yaml
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -33,9 +33,7 @@ def realsense(context):
     with open(path, "r", encoding="utf-8") as f:
         cam = yaml.safe_load(f) or {}
     profile = f"{int(cam['width'])},{int(cam['height'])},{int(cam['fps'])}"
-    # forwarding=False: rs_launch.py는 보이는 launch 인자를 전부 노드 파라미터로 넘기므로
-    # 이 파일의 인자(start_control 등)가 "not supported" 경고로 섞이지 않게 아래 3개만 전달
-    return [GroupAction([IncludeLaunchDescription(
+    return [IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("realsense2_camera"), "launch", "rs_launch.py"])),
         launch_arguments={
@@ -43,7 +41,8 @@ def realsense(context):
             "rgb_camera.color_profile": profile,
             "depth_module.depth_profile": profile,
         }.items(),
-    )], forwarding=False, condition=IfCondition(LaunchConfiguration("start_realsense")))]
+        condition=IfCondition(LaunchConfiguration("start_realsense")),
+    )]
 
 
 def generate_launch_description():
