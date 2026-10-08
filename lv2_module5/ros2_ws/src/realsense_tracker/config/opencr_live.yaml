@@ -1,0 +1,7 @@
+# 기존 이름 유지: 정상 runtime의 Serial 설정. DRY/LIVE 선택 flag는 없다.
+opencr_node:
+  ros__parameters:
+    port: "/dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00"
+    baud: 115200  # USB Serial. DYNAMIXEL 버스 1 Mbps와 별개.
+    command_timeout_sec: 0.5  # 새 유효 명령마다 갱신; 마지막 명령 후 침묵 시 STOP.
+    csv_path: ""  # 선택적 증빙 CSV. 새 절대경로를 지정하면 기록; 기존 파일 덮어쓰기 금지.

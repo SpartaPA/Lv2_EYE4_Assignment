@@ -1,0 +1,18 @@
+# 모의(DRY) 시험 전용 — test_control_dry/control_dry.launch.py가 사용. 실제 추적에는 control.yaml을 쓴다.
+# 값을 고정해 두어 문제 2 모의 입력의 기대 명령(x=+0.4 → pan -0.04 rad/s 등)이 Production 튜닝에 흔들리지 않게 한다.
+# dry_bridge는 테스트 sink: 시리얼 포트를 열지 않음 (dry_bridge.py).
+control_node:
+  ros__parameters:
+    kp_pan: 0.1
+    kp_tilt: 0.1
+    pan_speed_limit_rad_s: 0.05
+    tilt_speed_limit_rad_s: 0.05
+    pan_deadband: 0.03
+    tilt_deadband: 0.03
+    target_timeout_sec: 0.5
+    recovery_frames: 3
+    pan_direction: -1
+    tilt_direction: 1
+opencr_node:
+  ros__parameters:
+    csv_path: ""
