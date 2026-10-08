@@ -1,0 +1,18 @@
+opencr_ld ver 1.0.4
+opencr_ld_main 
+>>
+file name : /home/pa44/pa-opencr-build/build/tilt_hold_test/tilt_hold_test.ino.bin 
+file size : 115 KB
+Open port OK
+Clear Buffer Start
+Clear Buffer End
+Board Name : OpenCR R1.0
+Board Ver  : 0x17020800
+Board Rev  : 0x00000000
+>>
+flash_erase : 0 : 1.062000 sec
+flash_write : 0 : 1.250000 sec 
+CRC OK A95824 A95824 0.004000 sec
+[OK] Download 
+jump_to_fw 
+jump finished

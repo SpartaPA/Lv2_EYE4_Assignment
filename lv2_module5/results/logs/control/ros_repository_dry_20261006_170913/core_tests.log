@@ -1,0 +1,10 @@
+test_deadband_clamp_and_initial_state (test_control_core.CoreTests.test_deadband_clamp_and_initial_state) ... ok
+test_recovery_after_silence (test_control_core.CoreTests.test_recovery_after_silence) ... ok
+test_seven_inputs (test_control_core.CoreTests.test_seven_inputs) ... ok
+test_source_stamp_expires_even_if_receipt_recent (test_control_core.CoreTests.test_source_stamp_expires_even_if_receipt_recent) ... ok
+test_stale_duplicate_invalid_and_future (test_control_core.CoreTests.test_stale_duplicate_invalid_and_future) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.002s
+
+OK

@@ -1,0 +1,70 @@
+
+1. Commands while disarmed
+> DISARM
+> VEL 0.02
+< ACK DISARM
+< ERR DISARMED
+
+2. Valid commands keep the controller armed
+> ARM
+> VEL 0.02
+< ACK ARM
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> VEL 0.02
+< ACK VEL
+> STATUS
+< STATE ARMED NONZERO
+
+3. Silence must trigger the watchdog
+< EVENT TIMEOUT DISARMED
+> STATUS
+> VEL 0.02
+< STATE DISARMED ZERO
+< ERR DISARMED
+
+4. Invalid commands must not feed the watchdog
+> ARM
+> VEL nan
+< ACK ARM
+< ERR VALUE
+> VEL 1.0
+< ERR RANGE
+> VEL abc
+< ERR VALUE
+> HELLO
+< ERR COMMAND
+< EVENT TIMEOUT DISARMED
+> STATUS
+< STATE DISARMED ZERO
+
+5. STOP clears velocity; DISARM clears arming
+> ARM
+> VEL -0.02
+> STOP
+> STATUS
+> DISARM
+> STATUS
+< ACK ARM
+< ACK VEL
+< ACK STOP
+< STATE ARMED ZERO
+< ACK DISARM
+< STATE DISARMED ZERO
+> DISARM
+< ACK DISARM

@@ -1,0 +1,5 @@
+--- Miniterm on /dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00  115200,8,N,1 ---
+--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H ---
+FAULT SUPPORT_AT_NEUTRAL_FIRST; SUPPORT_CAMERA; TORQUE_STATE_NOT_GUARANTEED
+
+--- exit ---

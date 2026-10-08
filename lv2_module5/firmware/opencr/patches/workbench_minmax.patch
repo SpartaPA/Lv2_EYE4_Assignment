@@ -1,0 +1,21 @@
+diff --git a/arduino/opencr_arduino/opencr/libraries/DynamixelWorkbench/include/dynamixel_workbench_toolbox/dynamixel_driver.h b/arduino/opencr_arduino/opencr/libraries/DynamixelWorkbench/include/dynamixel_workbench_toolbox/dynamixel_driver.h
+index 381362f..c7af314 100644
+--- a/arduino/opencr_arduino/opencr/libraries/DynamixelWorkbench/include/dynamixel_workbench_toolbox/dynamixel_driver.h
++++ b/arduino/opencr_arduino/opencr/libraries/DynamixelWorkbench/include/dynamixel_workbench_toolbox/dynamixel_driver.h
+@@ -23,7 +23,15 @@
+ 
+ #if defined(__OPENCR__) || defined(__OPENCM904__)
+   #include <Arduino.h>
+-  #include <DynamixelSDK.h>
++  // Project compatibility fix: Arduino min/max macros
++#ifdef min
++#undef min
++#endif
++#ifdef max
++#undef max
++#endif
++
++#include <DynamixelSDK.h>
+ #elif defined(__linux__) || defined(__APPLE__)
+   #include "unistd.h"
+   #include "dynamixel_sdk/dynamixel_sdk.h"
