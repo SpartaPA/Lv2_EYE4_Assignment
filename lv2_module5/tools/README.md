@@ -72,7 +72,7 @@ ros2 run realsense_tracker perception_node --ros-args --params-file $CFG/tracker
 - 구독: `camera.yaml`의 `color_topic` (bgr8 / rgb8), `use_depth: true`이면 `aligned_depth_topic` (컬러에 정렬된 16UC1 / 32FC1)
   깊이는 별도로 받아 시각이 50 ms 이내인 컬러 영상에만 붙입니다. 깊이가 없어도 컬러 처리·`/target` 발행은 계속됩니다.
 - 깊이 거리 gate(13~100 cm)는 `enforce_depth_range: true`일 때만 동작합니다 (기본 false — 깊이는 기록용). launch는 camera_config 경로를 자동으로 넘깁니다.
-- 확인 화면: `-p publish_debug_image:=true`로 실행하면 `/perception/debug_image`에 검출 결과를 그린 영상이 나옵니다.
+- 확인 화면: `-p publish_debug_image:=true`로 실행하면 `/perception/debug_image`에 검출 결과를 그린 영상이, `/perception/mask`에 HSV 마스크(mono8)가 나옵니다.
   (`ros2 run rqt_image_view rqt_image_view`로 확인)
 - 필요한 패키지: `rclpy`, `sensor_msgs`, `geometry_msgs`, `message_filters`, `python3-numpy`, `python3-opencv`, `python3-yaml`
   (`cv_bridge`는 쓰지 않고 영상을 직접 변환)
@@ -107,7 +107,7 @@ ros2 run realsense_tracker perception_node --ros-args --params-file $CFG/tracker
 | `enforce_depth_range` | false | true일 때만 `depth_min/max_distance_cm` 밖·측정 불가를 미검출로 처리 (선택 기능) |
 | `depth_unit_m` | 0.001 | 16UC1 깊이 값 1의 길이(m) |
 | `depth_min_valid_ratio`, `depth_max_spread_cm` | 0.5, 5.0 | 이 기준을 못 넘으면 거리를 믿을 수 없다고 보고 비움 |
-| `publish_debug_image` | false | 확인 화면 발행 (평가 도구 `eval_frames.py`에 필요) |
+| `publish_debug_image` | false | 확인 화면(`/perception/debug_image`)·마스크(`/perception/mask`) 발행 (평가 도구 `eval_frames.py`에 필요) |
 | `stats_period_sec` | 5.0 (tracker.yaml: 1.0) | 이 간격(초)마다 처리 FPS·처리 시간 로그 (0이면 끔) |
 | `target_reliable` | false | `/target` 발행 QoS (false = best effort, 위 설명) |
 | `image_reliable` | true | 영상 구독 QoS (true = reliable, 위 설명) |

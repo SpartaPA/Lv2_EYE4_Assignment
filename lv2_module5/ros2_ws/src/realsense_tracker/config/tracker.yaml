@@ -25,7 +25,7 @@ perception_node:
     depth_min_distance_cm: 13.0   # enforce_depth_range: true일 때만 사용 (반드시 소수점 표기)
     depth_max_distance_cm: 100.0  # enforce_depth_range: true일 때만 사용 (반드시 소수점 표기)
 
-    publish_debug_image: false    # true면 /perception/debug_image 발행 (검출 결과를 그린 확인용 영상, 평가 도구에 필요)
+    publish_debug_image: false    # true면 /perception/debug_image(검출 결과 그림, 평가 도구에 필요)·/perception/mask(mono8) 발행
     stats_period_sec: 1.0         # 이 간격(초)마다 처리 FPS·처리 시간을 로그로 남김 (0이면 끔, /target 발행 주기와 무관)
 
     # QoS (모두 depth 1)

@@ -16,6 +16,7 @@
       미검출이면 x = y = z = 0  → 제어는 z == 0 이면 미검출로 판단
       header = 입력 컬러 영상의 시각·좌표계
   /perception/debug_image   sensor_msgs/Image (bgr8) — publish_debug_image: true일 때만 (확인용 화면)
+  /perception/mask          sensor_msgs/Image (mono8, 목표 색 = 255) — publish_debug_image: true일 때만 (HSV 마스크 확인용)
 
 파라미터: config/tracker.yaml 의 perception_node 항목 (기본값은 detector.PARAM_DEFAULTS)
   enforce_depth_range: false(기본) → 깊이는 기록용. true일 때만 거리 범위 밖을 미검출로 처리 (선택 기능)
@@ -41,7 +42,7 @@ NODE_PARAM_DEFAULTS = {
     "camera_config": "",            # 패키지 config/camera.yaml 경로 — 카메라 토픽 이름을 여기서 읽음 (launch가 자동 지정)
     "use_depth": False,             # true면 깊이 영상도 받아 거리(dist_cm)를 확인 화면·로그에 표시 (gate는 enforce_depth_range)
     "depth_unit_m": 0.001,          # 16UC1 깊이 값 1이 몇 m인지 (RealSense 기본: 1mm)
-    "publish_debug_image": False,   # true면 /perception/debug_image 발행 (rqt_image_view 등으로 확인)
+    "publish_debug_image": False,   # true면 /perception/debug_image·/perception/mask 발행 (rqt_image_view 등으로 확인)
     "stats_period_sec": 5.0,        # 이 간격(초)마다 처리 FPS·처리 시간을 로그로 남김 (0이면 끔)
     # /target 발행 QoS. false = best effort, depth 1 (발제문 규약: best-effort, depth 1부터 적용)
     # ※ best effort 발행은 reliable 구독과 연결되지 않음 → 구독 측(제어)도 best effort로 받아야 함
@@ -86,15 +87,15 @@ def image_to_numpy(msg):
     raise ValueError(f"지원하지 않는 영상 형식: {msg.encoding}")
 
 
-def numpy_to_image(bgr, header):
-    """BGR numpy 배열 → sensor_msgs/Image (bgr8)"""
+def numpy_to_image(img, header):
+    """numpy 배열 → sensor_msgs/Image. (H, W, 3) BGR → bgr8, (H, W) uint8 → mono8"""
     msg = Image()
     msg.header = header
-    msg.height, msg.width = bgr.shape[:2]
-    msg.encoding = "bgr8"
+    msg.height, msg.width = img.shape[:2]
+    msg.encoding = "bgr8" if img.ndim == 3 else "mono8"
     msg.is_bigendian = 0
-    msg.step = msg.width * 3
-    msg.data = np.ascontiguousarray(bgr).tobytes()
+    msg.step = msg.width * (3 if img.ndim == 3 else 1)
+    msg.data = np.ascontiguousarray(img).tobytes()
     return msg
 
 
@@ -135,6 +136,8 @@ class PerceptionNode(Node):
         self.pub = self.create_publisher(PointStamped, "/target", qos(params["target_reliable"]))
         self.debug_pub = (self.create_publisher(Image, "/perception/debug_image", 1)
                           if params["publish_debug_image"] else None)
+        self.mask_pub = (self.create_publisher(Image, "/perception/mask", 1)
+                         if params["publish_debug_image"] else None)
 
         # 영상 구독
         image_qos = qos(params["image_reliable"])
@@ -198,6 +201,8 @@ class PerceptionNode(Node):
 
         if self.debug_pub is not None:
             self.debug_pub.publish(numpy_to_image(draw(frame, res), color_msg.header))
+        if self.mask_pub is not None:
+            self.mask_pub.publish(numpy_to_image(res["mask"], color_msg.header))
 
         self.update_stats(res["found"], res["dist_cm"] is not None, (time.perf_counter() - t_start) * 1000)
 
